@@ -1,0 +1,17 @@
+{
+  "name": "ccusage-dashboard",
+  "version": "1.0.0",
+  "description": "Local dashboard for coding-agent token usage, powered by ccusage",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "ccusage": "^20.0.20",
+    "echarts": "^6.1.0"
+  }
+}

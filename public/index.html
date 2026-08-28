@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<title>CCUsage · Token 用量看板</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/vendor/echarts.js" defer></script>
+<script src="/app.js" defer></script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="status-dot" id="statusDot" title="数据状态"></span>
+    <h1>CCUSAGE<span class="sep">::</span>TOKEN<span class="brand-dim">看板</span></h1>
+  </div>
+  <div class="topbar-right">
+    <span class="last-updated" id="lastUpdated">等待数据…</span>
+    <button id="refreshBtn" class="btn btn-refresh" title="重新读取本地用量数据">
+      <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/>
+        <path d="M13.6 1.8v3h-3"/>
+      </svg>
+      <span>刷新</span>
+    </button>
+  </div>
+</header>
+
+<section class="controls">
+  <div class="presets" id="presets" role="group" aria-label="日期快捷范围">
+    <button class="preset-btn" data-preset="today">今天</button>
+    <button class="preset-btn" data-preset="yesterday">昨天</button>
+    <button class="preset-btn" data-preset="last7">近 7 天</button>
+    <button class="preset-btn" data-preset="last30">近 30 天</button>
+    <button class="preset-btn" data-preset="month">本月</button>
+  </div>
+  <div class="range-picker">
+    <input type="date" id="sinceInput" aria-label="开始日期">
+    <span class="range-arrow">→</span>
+    <input type="date" id="untilInput" aria-label="结束日期">
+    <button id="applyBtn" class="btn btn-apply">应用</button>
+  </div>
+</section>
+
+<div class="range-readout">
+  <span class="prompt">&gt;</span>
+  <span id="rangeLabel">—</span>
+  <span class="cursor" aria-hidden="true">▌</span>
+</div>
+
+<main id="main">
+  <section class="cards" aria-label="用量汇总">
+    <article class="card card-primary" style="--tick: var(--teal)">
+      <div class="card-label">总 TOKEN</div>
+      <div class="card-value" id="vTotal">0</div>
+      <div class="card-sub" id="vTotalSub">—</div>
+    </article>
+    <article class="card card-primary" style="--tick: var(--amber)">
+      <div class="card-label">费用估算 <span class="unit">USD</span></div>
+      <div class="card-value card-value-amber" id="vCost">$0.00</div>
+      <div class="card-sub" id="vCostSub">—</div>
+    </article>
+    <article class="card" style="--tick: var(--cyan)">
+      <div class="card-label">INPUT</div>
+      <div class="card-value" id="vInput">0</div>
+      <div class="share-bar"><i id="bInput"></i></div>
+    </article>
+    <article class="card" style="--tick: var(--blue)">
+      <div class="card-label">OUTPUT</div>
+      <div class="card-value" id="vOutput">0</div>
+      <div class="share-bar"><i id="bOutput"></i></div>
+    </article>
+    <article class="card" style="--tick: var(--magenta)">
+      <div class="card-label">CACHE 写入</div>
+      <div class="card-value" id="vCacheCreate">0</div>
+      <div class="share-bar"><i id="bCacheCreate"></i></div>
+    </article>
+    <article class="card" style="--tick: var(--green)">
+      <div class="card-label">CACHE 读取</div>
+      <div class="card-value" id="vCacheRead">0</div>
+      <div class="share-bar"><i id="bCacheRead"></i></div>
+    </article>
+  </section>
+
+  <section class="panel chart-panel">
+    <div class="panel-head">
+      <h2 id="chartTitle">用量图表</h2>
+      <div class="seg" id="stackToggle" role="group" aria-label="图表模式">
+        <button class="seg-btn active" data-mode="absolute">绝对值</button>
+        <button class="seg-btn" data-mode="percent">占比 %</button>
+      </div>
+    </div>
+    <div class="chart-wrap">
+      <div id="chart" aria-label="token 用量图表"></div>
+      <div class="chart-empty" id="chartEmpty" hidden>
+        <span class="chart-empty-tag">NO DATA</span>
+        <span>该时间范围内没有用量记录</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel table-panel">
+    <div class="panel-head">
+      <h2>明细</h2>
+      <span class="panel-sub" id="tableSub">—</span>
+    </div>
+    <div class="table-wrap">
+      <table id="detailTable">
+        <thead>
+          <tr>
+            <th class="col-date">日期</th>
+            <th>Agent</th>
+            <th>模型</th>
+            <th class="num">Input</th>
+            <th class="num">Output</th>
+            <th class="num">Cache 写</th>
+            <th class="num">Cache 读</th>
+            <th class="num">总量</th>
+            <th class="num">费用</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+        <tfoot id="tableFoot"></tfoot>
+      </table>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  DATA · 本地 ccusage（读取 Claude Code / Codex 等本机记录） · 费用为估算值 · 数据不出本机
+</footer>
+
+<div class="toast" id="toast" role="alert"></div>
+
+</body>
+</html>
