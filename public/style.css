@@ -6,6 +6,17 @@
   color-scheme: dark;
 
   --bg: #0b0e13;
+  --bg-top: #0c1017;
+  --bg-bottom: #090c10;
+  --glow: rgba(255, 180, 84, 0.045);
+  --dot: rgba(140, 160, 190, 0.065);
+  --scanline: rgba(255, 255, 255, 0.014);
+  --topbar-bg: rgba(11, 14, 19, 0.72);
+  --hover: rgba(255, 255, 255, 0.028);
+  --overlay: rgba(11, 14, 19, 0.6);
+  --bar-bg: rgba(255, 255, 255, 0.05);
+  --shadow-op: 0.4;
+
   --panel: #12161d;
   --panel-2: #161b24;
   --border: #1e2530;
@@ -29,6 +40,40 @@
   --radius: 6px;
 }
 
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f2efe7;
+  --bg-top: #f7f4ec;
+  --bg-bottom: #eae5d9;
+  --glow: rgba(178, 111, 20, 0.07);
+  --dot: rgba(120, 105, 80, 0.10);
+  --scanline: rgba(60, 50, 30, 0.015);
+  --topbar-bg: rgba(242, 239, 231, 0.82);
+  --hover: rgba(60, 50, 30, 0.045);
+  --overlay: rgba(250, 248, 242, 0.72);
+  --bar-bg: rgba(60, 50, 30, 0.08);
+  --shadow-op: 0.14;
+
+  --panel: #f6f3ec;
+  --panel-2: #fcfaf5;
+  --border: #e2dccd;
+  --border-strong: #cec5ae;
+
+  --text: #3b362c;
+  --muted: #7c7565;
+  --faint: #a89f8c;
+
+  --amber: #b26f14;
+  --amber-dim: rgba(178, 111, 20, 0.10);
+  --teal: #1f7a65;
+  --cyan: #257082;
+  --blue: #2f639c;
+  --magenta: #8a47b8;
+  --green: #55822f;
+  --red: #bb404c;
+}
+
 * { box-sizing: border-box; }
 
 html, body {
@@ -39,9 +84,9 @@ html, body {
 body {
   min-height: 100vh;
   background:
-    radial-gradient(ellipse 70% 40% at 50% -5%, rgba(255, 180, 84, 0.045), transparent),
-    radial-gradient(circle, rgba(140, 160, 190, 0.065) 1px, transparent 1px) 0 0 / 26px 26px,
-    linear-gradient(180deg, #0c1017 0%, var(--bg) 30%, #090c10 100%);
+    radial-gradient(ellipse 70% 40% at 50% -5%, var(--glow), transparent),
+    radial-gradient(circle, var(--dot) 1px, transparent 1px) 0 0 / 26px 26px,
+    linear-gradient(180deg, var(--bg-top) 0%, var(--bg) 30%, var(--bg-bottom) 100%);
   background-attachment: fixed;
   color: var(--text);
   font-family: var(--mono);
@@ -57,7 +102,7 @@ body::after {
   position: fixed;
   inset: 0;
   background: repeating-linear-gradient(0deg,
-    rgba(255, 255, 255, 0.014) 0 1px,
+    var(--scanline) 0 1px,
     transparent 1px 3px);
   pointer-events: none;
   z-index: 999;
@@ -72,7 +117,7 @@ body::after {
   gap: 16px;
   padding: 14px 28px;
   border-bottom: 1px solid var(--border);
-  background: rgba(11, 14, 19, 0.72);
+  background: var(--topbar-bg);
   backdrop-filter: blur(6px);
   position: sticky;
   top: 0;
@@ -160,6 +205,50 @@ body[data-status="loading"] .btn-refresh svg { animation: spin 0.9s linear infin
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ---------------- 设置面板 ---------------- */
+
+.settings-wrap { position: relative; }
+
+.settings-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  min-width: 250px;
+  background: var(--panel-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, var(--shadow-op));
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+  transition: opacity 0.18s, transform 0.18s;
+  z-index: 60;
+}
+.settings-panel.open {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.settings-group + .settings-group {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.settings-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.settings-panel .seg { display: flex; width: 100%; }
+.settings-panel .seg-btn { flex: 1; padding: 6px 8px; }
+
 /* ---------------- 控制区 ---------------- */
 
 .controls {
@@ -191,7 +280,7 @@ body[data-status="loading"] .btn-refresh svg { animation: spin 0.9s linear infin
   transition: color 0.15s, background 0.15s;
 }
 .preset-btn:last-child { border-right: none; }
-.preset-btn:hover { color: var(--text); background: rgba(255, 255, 255, 0.03); }
+.preset-btn:hover { color: var(--text); background: var(--hover); }
 .preset-btn.active {
   color: var(--amber);
   background: var(--amber-dim);
@@ -326,7 +415,7 @@ body[data-status="loading"] main { opacity: 0.6; }
 .share-bar {
   margin-top: 10px;
   height: 3px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bar-bg);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -404,7 +493,7 @@ body[data-status="loading"] main { opacity: 0.6; }
   gap: 8px;
   color: var(--faint);
   font-size: 13px;
-  background: rgba(11, 14, 19, 0.6);
+  background: var(--overlay);
 }
 /* [hidden] 的 UA 样式会被上面的 display:flex 覆盖，必须显式恢复 */
 .chart-empty[hidden] { display: none; }
@@ -417,6 +506,30 @@ body[data-status="loading"] main { opacity: 0.6; }
   padding: 3px 10px;
   opacity: 0.8;
 }
+
+/* ---------------- 热力图 ---------------- */
+
+.heatmap-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-text {
+  font-size: 10.5px;
+  color: var(--faint);
+  margin: 0 3px;
+}
+
+.legend-box {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--heat-0, var(--panel));
+  transition: background 0.3s;
+}
+
+#heatmap { width: 100%; height: 330px; }
 
 /* ---------------- 表格 ---------------- */
 
@@ -453,9 +566,8 @@ td {
 }
 
 tbody tr { transition: background 0.12s; }
-tbody tr:hover { background: rgba(255, 255, 255, 0.028); }
+tbody tr:hover { background: var(--hover); }
 
-td.col-date, th.col-date { color: var(--muted); }
 td.num { color: var(--muted); }
 td.num:last-child { color: var(--amber); }
 
@@ -485,9 +597,6 @@ tfoot .total-label { letter-spacing: 0.12em; font-size: 11px; color: var(--muted
   color: var(--faint);
   padding: 28px 0;
 }
-
-/* 单日视图隐藏日期列 */
-table.single-day .col-date { display: none; }
 
 /* ---------------- 页脚 / Toast ---------------- */
 

@@ -6,30 +6,122 @@
    ============================================================ */
 
 const SERIES = [
-  { key: 'inputTokens',          name: 'Input',    color: '#56b6c2' },
-  { key: 'outputTokens',         name: 'Output',   color: '#61afef' },
-  { key: 'cacheCreationTokens',  name: 'Cache 写', color: '#c678dd' },
-  { key: 'cacheReadTokens',      name: 'Cache 读', color: '#98c379' },
+  { key: 'inputTokens',          name: 'Input' },
+  { key: 'outputTokens',         name: 'Output' },
+  { key: 'cacheCreationTokens',  name: 'Cache 写' },
+  { key: 'cacheReadTokens',      name: 'Cache 读' },
 ];
 
-const AGENT_STYLE = {
-  claude:   { label: 'Claude',   color: '#e0876a' },
-  codex:    { label: 'Codex',    color: '#4ec9b0' },
-  opencode: { label: 'OpenCode', color: '#61afef' },
-  hermes:   { label: 'Hermes',   color: '#c678dd' },
+/* 图表 / agent 配色按主题取值，切换主题后需重渲染 */
+const CHART_THEMES = {
+  dark: {
+    series: {
+      inputTokens: '#56b6c2',
+      outputTokens: '#61afef',
+      cacheCreationTokens: '#c678dd',
+      cacheReadTokens: '#98c379',
+    },
+    agents: {
+      claude: '#e0876a',
+      codex: '#4ec9b0',
+      opencode: '#61afef',
+      hermes: '#c678dd',
+      default: '#8a93a3',
+    },
+    axisLine: '#2a3341',
+    axisLabel: '#8a93a3',
+    yLabel: '#5b6574',
+    splitLine: '#1c232e',
+    legendText: '#8a93a3',
+    inactive: '#3a4350',
+    tooltipBg: '#161c25',
+    tooltipBorder: '#2a3341',
+    tooltipText: '#d7dde6',
+    headMuted: '#8a93a3',
+    total: '#4ec9b0',
+    cost: '#ffb454',
+    shadow: 'rgba(255, 255, 255, 0.04)',
+    /* 热力图 5 档色阶：0=无数据，1~4 由浅到深 */
+    heat: ['#161d2c', '#1b3358', '#2456a8', '#3d8fe0', '#8ad4ff'],
+    calMonth: '#8a93a3',
+    calDay: '#5b6574',
+    calBorder: '#12161d',
+  },
+  light: {
+    series: {
+      inputTokens: '#257082',
+      outputTokens: '#2f639c',
+      cacheCreationTokens: '#8a47b8',
+      cacheReadTokens: '#55822f',
+    },
+    agents: {
+      claude: '#b85c38',
+      codex: '#1f7a65',
+      opencode: '#2f639c',
+      hermes: '#8a47b8',
+      default: '#7c7565',
+    },
+    axisLine: '#cec5ae',
+    axisLabel: '#7c7565',
+    yLabel: '#a89f8c',
+    splitLine: '#e0d8c8',
+    legendText: '#7c7565',
+    inactive: '#c6bda9',
+    tooltipBg: '#fcfaf5',
+    tooltipBorder: '#cec5ae',
+    tooltipText: '#3b362c',
+    headMuted: '#7c7565',
+    total: '#1f7a65',
+    cost: '#b26f14',
+    shadow: 'rgba(0, 0, 0, 0.06)',
+    heat: ['#e8ecf1', '#c3d6ea', '#8fb8e0', '#4a88c8', '#1d5fa8'],
+    calMonth: '#7c7565',
+    calDay: '#a89f8c',
+    calBorder: '#f6f3ec',
+  },
 };
 
+function chartTheme() {
+  return CHART_THEMES[settings.theme] || CHART_THEMES.dark;
+}
+
 const MONO_FONT = '"Cascadia Code", "Cascadia Mono", Consolas, "Microsoft YaHei UI", "Microsoft YaHei", monospace';
+
+/* ---------------- 设置（主题 / 单位，localStorage 持久化） ---------------- */
+
+const SETTINGS_KEY = 'ccusage-dashboard-settings';
+
+function loadSettings() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+    return {
+      theme: raw.theme === 'light' ? 'light' : 'dark',
+      unit: ['mb', 'decimal', 'cn'].includes(raw.unit) ? raw.unit : 'mb',
+    };
+  } catch {
+    return { theme: 'dark', unit: 'mb' };
+  }
+}
+
+const settings = loadSettings();
+
+function saveSettings() {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch { /* 存储不可用时静默降级为会话内生效 */ }
+}
 
 const state = {
   since: null,
   until: null,
   mode: 'absolute',   // absolute | percent
   data: null,
+  heatmap: null,      // 独立于筛选：固定近 30 天
   reqId: 0,
 };
 
 let chart = null;
+let heatmapChart = null;
 let toastTimer = null;
 
 /* ---------------- DOM ---------------- */
@@ -39,6 +131,10 @@ const els = {
   statusDot: $('statusDot'),
   lastUpdated: $('lastUpdated'),
   refreshBtn: $('refreshBtn'),
+  settingsBtn: $('settingsBtn'),
+  settingsPanel: $('settingsPanel'),
+  themeToggle: $('themeToggle'),
+  unitToggle: $('unitToggle'),
   presets: $('presets'),
   sinceInput: $('sinceInput'),
   untilInput: $('untilInput'),
@@ -47,11 +143,13 @@ const els = {
   chart: $('chart'),
   chartEmpty: $('chartEmpty'),
   chartTitle: $('chartTitle'),
+  heatmap: $('heatmap'),
+  heatmapEmpty: $('heatmapEmpty'),
+  heatmapTitle: $('heatmapTitle'),
   stackToggle: $('stackToggle'),
   tableBody: $('tableBody'),
   tableFoot: $('tableFoot'),
   tableSub: $('tableSub'),
-  table: $('detailTable'),
   toast: $('toast'),
   cards: {
     total: $('vTotal'), totalSub: $('vTotalSub'),
@@ -85,9 +183,20 @@ function inclusiveDays(since, until) {
 function fmtCompact(n) {
   if (!Number.isFinite(n)) return '—';
   const abs = Math.abs(n);
-  if (abs >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
-  if (abs >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
-  if (abs >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+
+  if (settings.unit === 'cn') {
+    if (abs >= 1e12) return `${(n / 1e12).toFixed(2)}万亿`;
+    if (abs >= 1e8) return `${(n / 1e8).toFixed(2)}亿`;
+    if (abs >= 1e4) return `${(n / 1e4).toFixed(1)}万`;
+    return String(n);
+  }
+
+  const suffix = settings.unit === 'decimal'
+    ? { k: '千', m: '百万', b: '十亿' }
+    : { k: 'K', m: 'M', b: 'B' };
+  if (abs >= 1e9) return `${(n / 1e9).toFixed(2)}${suffix.b}`;
+  if (abs >= 1e6) return `${(n / 1e6).toFixed(2)}${suffix.m}`;
+  if (abs >= 1e3) return `${(n / 1e3).toFixed(1)}${suffix.k}`;
   return String(n);
 }
 
@@ -95,10 +204,18 @@ function fmtFull(n) { return Number.isFinite(n) ? n.toLocaleString('en-US') : '�
 
 function fmtCost(n) { return `$${Number.isFinite(n) ? n.toFixed(2) : '0.00'}`; }
 
+const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+function weekdayOf(dateStr) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? '' : WEEKDAYS[d.getDay()];
+}
+
 function agentInfo(name) {
   const key = String(name || '').toLowerCase();
-  if (AGENT_STYLE[key]) return AGENT_STYLE[key];
-  return { label: key ? key[0].toUpperCase() + key.slice(1) : 'unknown', color: '#8a93a3' };
+  const t = chartTheme();
+  const label = key ? key[0].toUpperCase() + key.slice(1) : 'unknown';
+  return { label, color: t.agents[key] || t.agents.default };
 }
 
 function showToast(message) {
@@ -209,6 +326,127 @@ async function load() {
   }
 }
 
+/* ---------------- 热力图（固定近 30 天，不受筛选影响） ---------------- */
+
+const HEATMAP_DAYS = 180;
+
+async function loadHeatmap() {
+  const until = todayStr();
+  const since = fmtDate(addDays(new Date(), -(HEATMAP_DAYS - 1)));
+  try {
+    const res = await fetch(`/api/usage?since=${since}&until=${until}`);
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+    state.heatmap = { since, until, daily: json.report?.daily || [] };
+    renderHeatmap();
+  } catch (err) {
+    showToast(`热力图数据获取失败：${err.message}`);
+  }
+}
+
+function renderHeatmap() {
+  const hm = state.heatmap;
+  if (!hm) return;
+
+  const byDay = new Map();
+  for (const day of hm.daily) {
+    byDay.set(day.period, { tokens: day.totalTokens || 0, cost: day.totalCost || 0 });
+  }
+
+  // 填满整个 30 天窗口，无数据日记 0
+  const rows = [];
+  let max = 0;
+  for (let i = 0; i < HEATMAP_DAYS; i++) {
+    const date = fmtDate(addDays(new Date(`${hm.since}T00:00:00`), i));
+    const info = byDay.get(date) || { tokens: 0, cost: 0 };
+    if (info.tokens > max) max = info.tokens;
+    rows.push({ date, ...info });
+  }
+
+  els.heatmapTitle.textContent = `近 180 天热力图 · ${hm.since} → ${hm.until}`;
+
+  const empty = max === 0;
+  els.heatmapEmpty.hidden = !empty;
+  if (empty) return;
+
+  const t = chartTheme();
+  // 量化为 5 档：0=无数据，1~4 按占最大值比例
+  const levelOf = (v) => (v <= 0 ? 0 : Math.min(4, Math.floor((v / max) * 4) + 1));
+  const data = rows.map((r) => ({
+    value: [r.date, levelOf(r.tokens)],
+    tokens: r.tokens,
+    cost: r.cost,
+  }));
+
+  const option = {
+    backgroundColor: 'transparent',
+    textStyle: { fontFamily: MONO_FONT },
+    tooltip: {
+      trigger: 'item',
+      backgroundColor: t.tooltipBg,
+      borderColor: t.tooltipBorder,
+      borderWidth: 1,
+      padding: [10, 14],
+      textStyle: { color: t.tooltipText, fontSize: 12, fontFamily: MONO_FONT },
+      formatter: (p) => {
+        const d = p.data;
+        let html = `<div style="margin-bottom:6px;color:${t.headMuted}">${escapeHtml(d.value[0])} ${weekdayOf(d.value[0])}</div>`;
+        html += `Token&nbsp;&nbsp;<b style="color:${t.total}">${fmtCompact(d.tokens)}</b>`;
+        if (d.cost > 0) html += `<br>费用&nbsp;&nbsp;<b style="color:${t.cost}">${fmtCost(d.cost)}</b>`;
+        if (d.tokens <= 0) html += `<br><span style="color:${t.headMuted}">无用量记录</span>`;
+        return html;
+      },
+    },
+    visualMap: {
+      show: false,
+      type: 'piecewise',
+      seriesIndex: 0,
+      pieces: t.heat.map((color, level) => ({ min: level, max: level, color })),
+    },
+    calendar: {
+      top: 34,
+      left: 46,
+      right: 12,
+      cellSize: ['auto', 28],
+      range: [hm.since, hm.until],
+      splitLine: { show: false },
+      itemStyle: { color: 'transparent', borderWidth: 3, borderColor: t.calBorder, borderRadius: 4 },
+      yearLabel: { show: false },
+      monthLabel: {
+        color: t.calMonth,
+        fontSize: 11,
+        fontFamily: MONO_FONT,
+        margin: 8,
+        nameMap: 'cn',
+      },
+      dayLabel: {
+        color: t.calDay,
+        fontSize: 10.5,
+        fontFamily: MONO_FONT,
+        margin: 6,
+        firstDay: 1,
+        nameMap: ['日', '一', '二', '三', '四', '五', '六'],
+      },
+    },
+    series: [{
+      type: 'heatmap',
+      coordinateSystem: 'calendar',
+      data,
+    }],
+    animationDuration: 400,
+  };
+
+  if (!heatmapChart) heatmapChart = echarts.init(els.heatmap);
+  heatmapChart.setOption(option, { notMerge: true });
+}
+
+function applyHeatLegendColors() {
+  const t = chartTheme();
+  for (const box of document.querySelectorAll('#heatmapLegend .legend-box')) {
+    box.style.background = t.heat[Number(box.dataset.level)] || t.heat[0];
+  }
+}
+
 /* ---------------- 渲染 ---------------- */
 
 function render() {
@@ -294,12 +532,14 @@ function renderChart(daily) {
     ? (() => { const t = sumTokens(row); return t > 0 ? (row[key] / t) * 100 : 0; })()
     : row[key] || 0);
 
+  const t = chartTheme();
+
   const series = SERIES.map((s) => ({
     name: s.name,
     type: 'bar',
     stack: 'tokens',
     barMaxWidth: 42,
-    itemStyle: { color: s.color, borderRadius: single ? [0, 0, 0, 0] : [0, 0, 0, 0] },
+    itemStyle: { color: t.series[s.key], borderRadius: single ? [0, 0, 0, 0] : [0, 0, 0, 0] },
     emphasis: { itemStyle: { opacity: 0.85 } },
     data: rows.map((r) => +toValue(r, s.key).toFixed(2)),
   }));
@@ -309,25 +549,26 @@ function renderChart(daily) {
     textStyle: { fontFamily: MONO_FONT },
     tooltip: {
       trigger: 'axis',
-      axisPointer: { type: 'shadow', shadowStyle: { color: 'rgba(255,255,255,0.04)' } },
-      backgroundColor: '#161c25',
-      borderColor: '#2a3341',
+      axisPointer: { type: 'shadow', shadowStyle: { color: t.shadow } },
+      backgroundColor: t.tooltipBg,
+      borderColor: t.tooltipBorder,
       borderWidth: 1,
       padding: [10, 14],
-      textStyle: { color: '#d7dde6', fontSize: 12, fontFamily: MONO_FONT },
+      textStyle: { color: t.tooltipText, fontSize: 12, fontFamily: MONO_FONT },
       formatter: (params) => {
         const name = params[0].axisValue;
+        const head = single ? name : `${name} ${weekdayOf(name)}`;
         const lines = params
           .filter((p) => p.value > 0)
           .map((p) => `${p.marker} ${p.seriesName}  ${state.mode === 'percent' ? `${p.value.toFixed(1)}%` : fmtCompact(p.value)}`);
-        let html = `<div style="margin-bottom:6px;color:#8a93a3">${escapeHtml(name)}</div>`;
+        let html = `<div style="margin-bottom:6px;color:${t.headMuted}">${escapeHtml(head)}</div>`;
         html += lines.length ? lines.join('<br>') : '无数据';
         if (state.mode === 'absolute') {
           const total = totalLookup.get(name);
           const cost = costLookup.get(name);
-          html += `<div style="border-top:1px solid #2a3341;margin-top:8px;padding-top:7px">`
-            + `合计 <b style="color:#4ec9b0">${fmtCompact(total || 0)}</b>`
-            + `&nbsp;&nbsp;费用 <b style="color:#ffb454">${fmtCost(cost || 0)}</b></div>`;
+          html += `<div style="border-top:1px solid ${t.tooltipBorder};margin-top:8px;padding-top:7px">`
+            + `合计 <b style="color:${t.total}">${fmtCompact(total || 0)}</b>`
+            + `&nbsp;&nbsp;费用 <b style="color:${t.cost}">${fmtCost(cost || 0)}</b></div>`;
         }
         return html;
       },
@@ -339,36 +580,37 @@ function renderChart(daily) {
       itemWidth: 10,
       itemHeight: 10,
       itemGap: 16,
-      textStyle: { color: '#8a93a3', fontSize: 11, fontFamily: MONO_FONT },
-      inactiveColor: '#3a4350',
+      textStyle: { color: t.legendText, fontSize: 11, fontFamily: MONO_FONT },
+      inactiveColor: t.inactive,
     },
     grid: { left: 10, right: 14, top: 38, bottom: 6, containLabel: true },
     xAxis: {
       type: 'category',
       data: categories,
-      axisLine: { lineStyle: { color: '#2a3341' } },
+      axisLine: { lineStyle: { color: t.axisLine } },
       axisTick: { show: false },
       axisLabel: {
-        color: '#8a93a3',
+        color: t.axisLabel,
         fontSize: 11,
         fontFamily: MONO_FONT,
-        rotate: categories.length > 8 || single ? 0 : 0,
         interval: 0,
-        formatter: (v) => (v.length > 16 ? `${v.slice(0, 15)}…` : v),
+        formatter: (v) => (single
+          ? (v.length > 16 ? `${v.slice(0, 15)}…` : v)
+          : `${v.slice(5)}\n${weekdayOf(v)}`),
       },
     },
     yAxis: {
       type: 'value',
       max: state.mode === 'percent' ? 100 : null,
       axisLabel: {
-        color: '#5b6574',
+        color: t.yLabel,
         fontSize: 11,
         fontFamily: MONO_FONT,
         formatter: (v) => (state.mode === 'percent' ? `${v}%` : fmtCompact(v)),
       },
-      splitLine: { lineStyle: { color: '#1c232e', type: 'dashed' } },
+      splitLine: { lineStyle: { color: t.splitLine, type: 'dashed' } },
     },
-    color: SERIES.map((s) => s.color),
+    color: SERIES.map((s) => t.series[s.key]),
     series,
     animationDuration: 500,
     animationEasing: 'cubicOut',
@@ -384,42 +626,45 @@ function sumTokens(row) {
 }
 
 function renderTable(daily, totals) {
-  const sorted = [...daily].sort((a, b) => b.period.localeCompare(a.period));
-  els.table.classList.toggle('single-day', sorted.length === 1);
-
+  // 按选定范围整体聚合：agent × 模型 一行，不分天
   const agentNames = new Set();
-  const rows = [];
+  const agg = new Map();
 
-  for (const day of sorted) {
+  for (const day of daily) {
     const agentEntries = (day.agents && day.agents.length)
       ? day.agents
       : [{ agent: (day.metadata?.agents || []).join('/') || 'all', modelBreakdowns: day.modelBreakdowns }];
 
     for (const agentEntry of agentEntries) {
       agentNames.add(agentEntry.agent);
-      const models = [...(agentEntry.modelBreakdowns || [])].sort((a, b) => sumTokens(b) - sumTokens(a));
-      for (const mb of models) {
-        rows.push({
-          date: day.period,
+      for (const mb of agentEntry.modelBreakdowns || []) {
+        const key = `${agentEntry.agent}|||${mb.modelName}`;
+        const cur = agg.get(key) || {
           agent: agentEntry.agent,
           model: mb.modelName,
-          input: mb.inputTokens || 0,
-          output: mb.outputTokens || 0,
-          cacheCreate: mb.cacheCreationTokens || 0,
-          cacheRead: mb.cacheReadTokens || 0,
-          cost: mb.cost || 0,
-        });
+          input: 0, output: 0, cacheCreate: 0, cacheRead: 0, cost: 0,
+        };
+        cur.input += mb.inputTokens || 0;
+        cur.output += mb.outputTokens || 0;
+        cur.cacheCreate += mb.cacheCreationTokens || 0;
+        cur.cacheRead += mb.cacheReadTokens || 0;
+        cur.cost += mb.cost || 0;
+        agg.set(key, cur);
       }
     }
   }
 
+  const rows = [...agg.values()]
+    .map((r) => ({ ...r, total: r.input + r.output + r.cacheCreate + r.cacheRead }))
+    .sort((a, b) => b.total - a.total);
+
   const agentList = [...agentNames].map(agentInfo);
   els.tableSub.textContent = rows.length
-    ? `${rows.length} 行 · ${agentList.map((a) => a.label).join(' / ')} · ${sorted.length} 天`
+    ? `${rows.length} 行 · ${agentList.map((a) => a.label).join(' / ')} · 覆盖 ${daily.length} 天`
     : '—';
 
   if (!rows.length) {
-    els.tableBody.innerHTML = `<tr class="table-empty-row"><td colspan="9">该时间范围内没有用量记录</td></tr>`;
+    els.tableBody.innerHTML = `<tr class="table-empty-row"><td colspan="8">该时间范围内没有用量记录</td></tr>`;
     els.tableFoot.innerHTML = '';
     return;
   }
@@ -429,23 +674,20 @@ function renderTable(daily, totals) {
 
   els.tableBody.innerHTML = rows.map((r) => {
     const a = agentInfo(r.agent);
-    const total = r.input + r.output + r.cacheCreate + r.cacheRead;
     return `<tr>`
-      + `<td class="col-date">${r.date}</td>`
       + `<td><span class="agent-chip" style="color:${a.color}">${escapeHtml(a.label)}</span></td>`
       + `<td>${escapeHtml(r.model)}</td>`
       + numCell(r.input, fmtFull(r.input))
       + numCell(r.output, fmtFull(r.output))
       + numCell(r.cacheCreate, fmtFull(r.cacheCreate))
       + numCell(r.cacheRead, fmtFull(r.cacheRead))
-      + numCell(total, fmtFull(total))
+      + numCell(r.total, fmtFull(r.total))
       + costCell(r.cost, `$${r.cost.toFixed(4)}`)
       + `</tr>`;
   }).join('');
 
   const t = totals || {};
   els.tableFoot.innerHTML = `<tr>`
-    + `<td class="col-date"></td>`
     + `<td class="total-label" colspan="2">合计</td>`
     + numCell(t.inputTokens || 0, fmtFull(t.inputTokens || 0))
     + numCell(t.outputTokens || 0, fmtFull(t.outputTokens || 0))
@@ -479,7 +721,63 @@ els.untilInput.addEventListener('change', applyCustomRange);
 els.sinceInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyCustomRange(); });
 els.untilInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyCustomRange(); });
 
-els.refreshBtn.addEventListener('click', () => load());
+els.refreshBtn.addEventListener('click', () => { load(); loadHeatmap(); });
+
+/* ---------------- 设置面板 ---------------- */
+
+function closeSettingsPanel() {
+  els.settingsPanel.classList.remove('open');
+  els.settingsBtn.setAttribute('aria-expanded', 'false');
+}
+
+function applyTheme() {
+  document.documentElement.dataset.theme = settings.theme;
+  for (const b of els.themeToggle.querySelectorAll('.seg-btn')) {
+    b.classList.toggle('active', b.dataset.theme === settings.theme);
+  }
+  applyHeatLegendColors();
+  if (state.heatmap) renderHeatmap();
+}
+
+function applyUnit() {
+  for (const b of els.unitToggle.querySelectorAll('.seg-btn')) {
+    b.classList.toggle('active', b.dataset.unit === settings.unit);
+  }
+}
+
+els.settingsBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const open = els.settingsPanel.classList.toggle('open');
+  els.settingsBtn.setAttribute('aria-expanded', String(open));
+});
+
+document.addEventListener('click', (e) => {
+  if (!els.settingsPanel.classList.contains('open')) return;
+  if (els.settingsPanel.contains(e.target)) return;
+  closeSettingsPanel();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeSettingsPanel();
+});
+
+els.themeToggle.addEventListener('click', (e) => {
+  const btn = e.target.closest('.seg-btn');
+  if (!btn || btn.dataset.theme === settings.theme) return;
+  settings.theme = btn.dataset.theme;
+  saveSettings();
+  applyTheme();
+  if (state.data) render();
+});
+
+els.unitToggle.addEventListener('click', (e) => {
+  const btn = e.target.closest('.seg-btn');
+  if (!btn || btn.dataset.unit === settings.unit) return;
+  settings.unit = btn.dataset.unit;
+  saveSettings();
+  applyUnit();
+  if (state.data) render();
+});
 
 els.stackToggle.addEventListener('click', (e) => {
   const btn = e.target.closest('.seg-btn');
@@ -491,8 +789,14 @@ els.stackToggle.addEventListener('click', (e) => {
   if (state.data) renderChart(state.data.report?.daily || []);
 });
 
-window.addEventListener('resize', () => { if (chart) chart.resize(); });
+window.addEventListener('resize', () => {
+  if (chart) chart.resize();
+  if (heatmapChart) heatmapChart.resize();
+});
 
 /* ---------------- 启动 ---------------- */
 
+applyTheme();
+applyUnit();
 setRange(todayStr(), todayStr());
+loadHeatmap();

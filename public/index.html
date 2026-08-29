@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="color-scheme" content="dark">
+<meta name="color-scheme" content="dark light">
 <title>CCUsage · Token 用量看板</title>
 <link rel="stylesheet" href="/style.css">
 <script src="/vendor/echarts.js" defer></script>
@@ -25,6 +25,34 @@
       </svg>
       <span>刷新</span>
     </button>
+    <div class="settings-wrap">
+      <button id="settingsBtn" class="btn btn-settings" title="设置" aria-haspopup="true" aria-expanded="false">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+          <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
+          <circle cx="6" cy="4.5" r="1.5" fill="currentColor" stroke="none"/>
+          <circle cx="10.5" cy="8" r="1.5" fill="currentColor" stroke="none"/>
+          <circle cx="5" cy="11.5" r="1.5" fill="currentColor" stroke="none"/>
+        </svg>
+        <span>设置</span>
+      </button>
+      <div class="settings-panel" id="settingsPanel" aria-label="设置">
+        <div class="settings-group">
+          <div class="settings-label">外观</div>
+          <div class="seg" id="themeToggle" role="group" aria-label="主题">
+            <button class="seg-btn" data-theme="dark">夜间</button>
+            <button class="seg-btn" data-theme="light">白天</button>
+          </div>
+        </div>
+        <div class="settings-group">
+          <div class="settings-label">Token 单位</div>
+          <div class="seg" id="unitToggle" role="group" aria-label="Token 单位">
+            <button class="seg-btn" data-unit="mb">M/B</button>
+            <button class="seg-btn" data-unit="decimal">百万·十亿</button>
+            <button class="seg-btn" data-unit="cn">万·亿</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </header>
 
@@ -101,6 +129,28 @@
     </div>
   </section>
 
+  <section class="panel heatmap-panel">
+    <div class="panel-head">
+      <h2 id="heatmapTitle">近 180 天热力图</h2>
+      <div class="heatmap-legend" id="heatmapLegend" aria-hidden="true">
+        <span class="legend-text">少</span>
+        <i class="legend-box" data-level="0"></i>
+        <i class="legend-box" data-level="1"></i>
+        <i class="legend-box" data-level="2"></i>
+        <i class="legend-box" data-level="3"></i>
+        <i class="legend-box" data-level="4"></i>
+        <span class="legend-text">多</span>
+      </div>
+    </div>
+    <div class="chart-wrap">
+      <div id="heatmap" aria-label="近 180 天 token 用量热力图"></div>
+      <div class="chart-empty" id="heatmapEmpty" hidden>
+        <span class="chart-empty-tag">NO DATA</span>
+        <span>近 180 天没有用量记录</span>
+      </div>
+    </div>
+  </section>
+
   <section class="panel table-panel">
     <div class="panel-head">
       <h2>明细</h2>
@@ -110,7 +160,6 @@
       <table id="detailTable">
         <thead>
           <tr>
-            <th class="col-date">日期</th>
             <th>Agent</th>
             <th>模型</th>
             <th class="num">Input</th>
