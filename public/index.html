@@ -25,34 +25,15 @@
       </svg>
       <span>刷新</span>
     </button>
-    <div class="settings-wrap">
-      <button id="settingsBtn" class="btn btn-settings" title="设置" aria-haspopup="true" aria-expanded="false">
-        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
-          <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
-          <circle cx="6" cy="4.5" r="1.5" fill="currentColor" stroke="none"/>
-          <circle cx="10.5" cy="8" r="1.5" fill="currentColor" stroke="none"/>
-          <circle cx="5" cy="11.5" r="1.5" fill="currentColor" stroke="none"/>
-        </svg>
-        <span>设置</span>
-      </button>
-      <div class="settings-panel" id="settingsPanel" aria-label="设置">
-        <div class="settings-group">
-          <div class="settings-label">外观</div>
-          <div class="seg" id="themeToggle" role="group" aria-label="主题">
-            <button class="seg-btn" data-theme="dark">夜间</button>
-            <button class="seg-btn" data-theme="light">白天</button>
-          </div>
-        </div>
-        <div class="settings-group">
-          <div class="settings-label">Token 单位</div>
-          <div class="seg" id="unitToggle" role="group" aria-label="Token 单位">
-            <button class="seg-btn" data-unit="mb">M/B</button>
-            <button class="seg-btn" data-unit="decimal">百万·十亿</button>
-            <button class="seg-btn" data-unit="cn">万·亿</button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <button id="settingsBtn" class="btn btn-settings" title="设置" aria-haspopup="dialog" aria-expanded="false">
+      <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+        <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
+        <circle cx="6" cy="4.5" r="1.5" fill="currentColor" stroke="none"/>
+        <circle cx="10.5" cy="8" r="1.5" fill="currentColor" stroke="none"/>
+        <circle cx="5" cy="11.5" r="1.5" fill="currentColor" stroke="none"/>
+      </svg>
+      <span>设置</span>
+    </button>
   </div>
 </header>
 
@@ -65,10 +46,35 @@
     <button class="preset-btn" data-preset="month">本月</button>
   </div>
   <div class="range-picker">
-    <input type="date" id="sinceInput" aria-label="开始日期">
-    <span class="range-arrow">→</span>
-    <input type="date" id="untilInput" aria-label="结束日期">
-    <button id="applyBtn" class="btn btn-apply">应用</button>
+    <button id="rangeTrigger" class="btn range-trigger" aria-haspopup="dialog" aria-expanded="false" title="选择日期范围">
+      <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+        <rect x="2" y="3" width="12" height="11" rx="2"/>
+        <path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"/>
+      </svg>
+      <span id="rangeTriggerText">—</span>
+      <svg class="caret" viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 6l4 4 4-4"/>
+      </svg>
+    </button>
+    <div class="range-pop" id="rangePop" role="dialog" aria-label="选择日期范围">
+      <div class="range-nav">
+        <button id="prevMonthBtn" class="range-nav-btn" title="上个月" aria-label="上个月">
+          <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3L5 8l5 5"/></svg>
+        </button>
+        <div class="range-month-titles">
+          <span id="monthTitleL"></span>
+          <span id="monthTitleR"></span>
+        </div>
+        <button id="nextMonthBtn" class="range-nav-btn" title="下个月" aria-label="下个月">
+          <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg>
+        </button>
+      </div>
+      <div class="range-calendars">
+        <div class="range-cal" id="calL"></div>
+        <div class="range-cal" id="calR"></div>
+      </div>
+      <div class="range-pop-foot" id="rangeHint">点击选择开始日期</div>
+    </div>
   </div>
 </section>
 
@@ -180,6 +186,35 @@
 <footer class="footer">
   DATA · 本地 ccusage（读取 Claude Code / Codex 等本机记录） · 费用为估算值 · 数据不出本机
 </footer>
+
+<div class="modal-backdrop" id="settingsModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="modal-head">
+      <h2 id="settingsTitle">设置</h2>
+      <button class="modal-close" id="settingsClose" title="关闭" aria-label="关闭设置">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+          <path d="M4 4l8 8M12 4l-8 8"/>
+        </svg>
+      </button>
+    </div>
+    <div class="settings-group">
+      <div class="settings-label">外观</div>
+      <div class="seg" id="themeToggle" role="group" aria-label="主题">
+        <button class="seg-btn" data-theme="light">白天</button>
+        <button class="seg-btn" data-theme="dark">夜间</button>
+        <button class="seg-btn" data-theme="system">跟随系统</button>
+      </div>
+    </div>
+    <div class="settings-group">
+      <div class="settings-label">Token 单位</div>
+      <div class="seg" id="unitToggle" role="group" aria-label="Token 单位">
+        <button class="seg-btn" data-unit="mb">M/B</button>
+        <button class="seg-btn" data-unit="decimal">百万·十亿</button>
+        <button class="seg-btn" data-unit="cn">万·亿</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="toast" id="toast" role="alert"></div>
 

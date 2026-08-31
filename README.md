@@ -1,31 +1,52 @@
 # CCUsage Dashboard · Token 用量看板
 
-本地运行的 coding agent token 用量看板，基于 [ccusage](https://github.com/ryoppippi/ccusage) 解析 Claude Code / Codex 等 agent 在本机留下的会话记录（JSONL），纯本地计算，数据不出机器。
+本地运行的 coding agent token 用量看板，基于 [ccusage](https://github.com/ryoppippi/ccusage) 解析 Claude Code / Codex 等 agent 在本机留下的会话记录（JSONL），并内置 ZCode 会话记录解析，纯本地计算，数据不出机器。
+
+支持的数据源：
+
+- **Claude Code / Codex / OpenCode / Hermes**：经由 ccusage 读取各自本机记录
+- **ZCode**：直接解析 `~/.zcode/cli/rollout/model-io-sess_*.jsonl`（每行一次模型调用，按本地时区归天，含子代理会话）；ZCode 的 inputTokens 已含缓存读/写，展示时自动拆分为 净输入 / 缓存写 / 缓存读 四分量
+- **ZCode 成本估算（可选）**：在项目根目录创建 `prices.json`（单位：USD / 百万 token）：
+  ```json
+  { "GLM-5.3-Flash": { "input": 0.1, "output": 0.4, "cacheRead": 0.02, "cacheWrite": 0.2 } }
+  ```
+  未配置的模型成本计为 0。
 
 ## 功能
 
 - **默认显示当天**用量，打开即见
 - **日期快捷预设**：今天 / 昨天 / 近 7 天 / 近 30 天 / 本月
-- **自定义日期范围**：起止日期选择器
+- **自定义日期范围**：双月日历弹层（上月 + 本月，可翻页），第一次点击选开始日期、第二次点击选结束日期并自动确认
 - **手动刷新**：点「刷新」重新读取最新本地记录
 - **汇总卡片**：总 Token、费用估算（USD）、Input / Output / Cache 写入 / Cache 读取
 - **趋势图表**（ECharts）：
   - 多日范围 → 按日堆叠柱状图，可切换「绝对值 / 占比 %」，tooltip 含当日费用
   - 单日 → 按模型分布柱状图
-- **设置**（顶栏「设置」按钮，选择保存在浏览器本地）：
-  - 外观：夜间（默认）/ 白天
+- **设置**（顶栏「设置」按钮弹出对话框，选择保存在浏览器本地）：
+  - 外观：白天 / 夜间（默认）/ 跟随系统（实时跟随操作系统明暗偏好）
   - Token 单位：M/B（默认，如 15.91M）/ 百万·十亿（15.91百万）/ 万·亿（1590.5万）
 - **近 180 天热力图**：GitHub 贡献图风格的日历视图，固定显示今天往前 180 天（不受时间筛选影响），冰蓝色阶表示当日用量，悬停看日期 + 总量 + 费用；仅初始加载和点「刷新」时更新
 - **明细表格**：按 Agent × 模型 聚合展示选定范围内的总用量（不分天），含合计行
 
 ## 快速开始
 
+**方式一（推荐）：双击项目根目录的 `启动看板.vbs`**
+
+- 自动在后台启动服务（无控制台窗口），等服务就绪后用默认浏览器打开看板
+- 如果服务已在运行则不会重复启动，直接打开页面
+- 双击 `停止看板.vbs` 可停止后台服务（只停本项目，不影响其他 node 程序）
+
+**方式二：命令行**
+
 ```bash
-npm install
+npm install   # 首次使用
 npm start
 ```
 
 打开 http://localhost:3456 即可（端口可用 `PORT=xxxx npm start` 修改）。
+
+> 提示：把 `启动看板.vbs` 的快捷方式放进 `shell:startup` 文件夹（Win+R 输入）可实现开机自动启动。
+> 启动器支持 `/no-browser` 参数：只启动服务、不打开浏览器（`cscript //nologo 启动看板.vbs /no-browser`）。
 
 ## 工作原理
 

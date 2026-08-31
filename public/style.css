@@ -16,6 +16,7 @@
   --overlay: rgba(11, 14, 19, 0.6);
   --bar-bg: rgba(255, 255, 255, 0.05);
   --shadow-op: 0.4;
+  --modal-backdrop: rgba(4, 6, 10, 0.62);
 
   --panel: #12161d;
   --panel-2: #161b24;
@@ -54,6 +55,7 @@
   --overlay: rgba(250, 248, 242, 0.72);
   --bar-bg: rgba(60, 50, 30, 0.08);
   --shadow-op: 0.14;
+  --modal-backdrop: rgba(70, 60, 40, 0.32);
 
   --panel: #f6f3ec;
   --panel-2: #fcfaf5;
@@ -205,35 +207,81 @@ body[data-status="loading"] .btn-refresh svg { animation: spin 0.9s linear infin
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ---------------- 设置面板 ---------------- */
+/* ---------------- 设置弹窗 ---------------- */
 
-.settings-wrap { position: relative; }
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: var(--modal-backdrop);
+  backdrop-filter: blur(3px);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s, visibility 0.2s;
+  z-index: 500;
+}
+.modal-backdrop.open {
+  opacity: 1;
+  visibility: visible;
+}
 
-.settings-panel {
-  position: absolute;
-  top: calc(100% + 10px);
-  right: 0;
-  min-width: 250px;
+.modal {
+  width: min(400px, 100%);
   background: var(--panel-2);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  padding: 14px 16px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, var(--shadow-op));
-  opacity: 0;
-  transform: translateY(-6px);
-  pointer-events: none;
-  transition: opacity 0.18s, transform 0.18s;
-  z-index: 60;
+  border-radius: 10px;
+  padding: 18px 20px 20px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, var(--shadow-op));
+  transform: translateY(10px) scale(0.98);
+  transition: transform 0.2s cubic-bezier(0.2, 0.7, 0.3, 1);
 }
-.settings-panel.open {
-  opacity: 1;
-  transform: translateY(0);
-  pointer-events: auto;
+.modal-backdrop.open .modal {
+  transform: translateY(0) scale(1);
 }
 
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.modal-head h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  font-family: inherit;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.modal-close:hover {
+  color: var(--red);
+  border-color: var(--border-strong);
+  background: var(--hover);
+}
+.modal-close:focus-visible { outline: 1px solid var(--amber); outline-offset: 2px; }
+
 .settings-group + .settings-group {
-  margin-top: 12px;
-  padding-top: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
   border-top: 1px solid var(--border);
 }
 
@@ -246,8 +294,8 @@ body[data-status="loading"] .btn-refresh svg { animation: spin 0.9s linear infin
   margin-bottom: 8px;
 }
 
-.settings-panel .seg { display: flex; width: 100%; }
-.settings-panel .seg-btn { flex: 1; padding: 6px 8px; }
+.modal .seg { display: flex; width: 100%; }
+.modal .seg-btn { flex: 1; padding: 6px 8px; }
 
 /* ---------------- 控制区 ---------------- */
 
@@ -288,26 +336,127 @@ body[data-status="loading"] .btn-refresh svg { animation: spin 0.9s linear infin
 }
 
 .range-picker {
+  position: relative;
+  display: inline-flex;
+}
+
+.range-trigger { gap: 8px; color: var(--text); }
+.range-trigger > svg:first-child { color: var(--muted); }
+.range-trigger .caret { color: var(--faint); transition: transform 0.2s; }
+.range-trigger:hover { color: var(--amber); border-color: var(--amber); }
+.range-trigger[aria-expanded="true"] {
+  color: var(--amber);
+  border-color: var(--amber);
+  background: var(--amber-dim);
+}
+.range-trigger[aria-expanded="true"] .caret { transform: rotate(180deg); }
+
+.range-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--panel-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 14px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, var(--shadow-op));
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-6px);
+  transition: opacity 0.18s, transform 0.18s, visibility 0.18s;
+  z-index: 200;
+}
+.range-pop.open {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.range-nav {
+  display: grid;
+  grid-template-columns: 26px 1fr 26px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.range-nav-btn {
+  width: 26px;
+  height: 26px;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-}
-
-.range-picker input[type="date"] {
-  font-family: var(--mono);
-  font-size: 12.5px;
-  color: var(--text);
-  background: var(--panel);
+  justify-content: center;
+  color: var(--muted);
+  background: transparent;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  padding: 6px 10px;
   cursor: pointer;
-  transition: border-color 0.15s;
+  transition: color 0.15s, border-color 0.15s;
 }
-.range-picker input[type="date"]:hover { border-color: var(--amber); }
-.range-picker input[type="date"]:focus-visible { outline: 1px solid var(--amber); outline-offset: 1px; }
+.range-nav-btn:hover { color: var(--amber); border-color: var(--amber); }
+.range-nav-btn:focus-visible { outline: 1px solid var(--amber); outline-offset: 1px; }
 
-.range-arrow { color: var(--faint); }
+.range-month-titles {
+  display: flex;
+  justify-content: space-around;
+  font-size: 12.5px;
+  color: var(--text);
+  letter-spacing: 0.04em;
+}
+
+.range-calendars { display: flex; gap: 18px; }
+
+.range-cal {
+  display: grid;
+  grid-template-columns: repeat(7, 34px);
+  gap: 2px;
+}
+
+.cal-wk {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  font-size: 10.5px;
+  color: var(--faint);
+}
+
+.cal-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.cal-cell:hover { background: var(--hover); color: var(--amber); }
+.cal-cell:focus-visible { outline: 1px solid var(--amber); outline-offset: -1px; }
+.cal-cell.cal-blank { pointer-events: none; }
+.cal-cell.today { box-shadow: inset 0 -2px 0 var(--teal); }
+.cal-cell.in-range { background: var(--amber-dim); border-radius: 0; }
+.cal-cell.sel-start, .cal-cell.sel-end {
+  background: var(--amber);
+  color: #0b0e13;
+  font-weight: 600;
+}
+.cal-cell.sel-start { border-radius: var(--radius) 0 0 var(--radius); }
+.cal-cell.sel-end { border-radius: 0 var(--radius) var(--radius) 0; }
+.cal-cell.sel-start.sel-end { border-radius: var(--radius); }
+
+.range-pop-foot {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--muted);
+  min-height: 15px;
+}
 
 /* ---------------- 范围读出 ---------------- */
 
@@ -650,4 +799,6 @@ tfoot .total-label { letter-spacing: 0.12em; font-size: 11px; color: var(--muted
   .topbar-right .last-updated { display: none; }
   #chart { height: 280px; }
   .presets { flex-wrap: wrap; }
+  .range-calendars { flex-direction: column; gap: 12px; }
+  .range-pop { max-width: calc(100vw - 24px); overflow-y: auto; }
 }

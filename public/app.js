@@ -26,6 +26,7 @@ const CHART_THEMES = {
       codex: '#4ec9b0',
       opencode: '#61afef',
       hermes: '#c678dd',
+      zcode: '#d7ba7d',
       default: '#8a93a3',
     },
     axisLine: '#2a3341',
@@ -59,6 +60,7 @@ const CHART_THEMES = {
       codex: '#1f7a65',
       opencode: '#2f639c',
       hermes: '#8a47b8',
+      zcode: '#8a6d1a',
       default: '#7c7565',
     },
     axisLine: '#cec5ae',
@@ -82,7 +84,7 @@ const CHART_THEMES = {
 };
 
 function chartTheme() {
-  return CHART_THEMES[settings.theme] || CHART_THEMES.dark;
+  return CHART_THEMES[currentTheme] || CHART_THEMES.dark;
 }
 
 const MONO_FONT = '"Cascadia Code", "Cascadia Mono", Consolas, "Microsoft YaHei UI", "Microsoft YaHei", monospace';
@@ -91,11 +93,13 @@ const MONO_FONT = '"Cascadia Code", "Cascadia Mono", Consolas, "Microsoft YaHei 
 
 const SETTINGS_KEY = 'ccusage-dashboard-settings';
 
+const systemDarkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
 function loadSettings() {
   try {
     const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
     return {
-      theme: raw.theme === 'light' ? 'light' : 'dark',
+      theme: ['light', 'dark', 'system'].includes(raw.theme) ? raw.theme : 'dark',
       unit: ['mb', 'decimal', 'cn'].includes(raw.unit) ? raw.unit : 'mb',
     };
   } catch {
@@ -104,6 +108,13 @@ function loadSettings() {
 }
 
 const settings = loadSettings();
+
+/* system 选项跟随操作系统偏好，其余取自身选择 */
+let currentTheme = settings.theme === 'system' ? (systemDarkQuery.matches ? 'dark' : 'light') : settings.theme;
+
+function resolvedTheme() {
+  return settings.theme === 'system' ? (systemDarkQuery.matches ? 'dark' : 'light') : settings.theme;
+}
 
 function saveSettings() {
   try {
@@ -132,13 +143,21 @@ const els = {
   lastUpdated: $('lastUpdated'),
   refreshBtn: $('refreshBtn'),
   settingsBtn: $('settingsBtn'),
-  settingsPanel: $('settingsPanel'),
+  settingsModal: $('settingsModal'),
+  settingsClose: $('settingsClose'),
   themeToggle: $('themeToggle'),
   unitToggle: $('unitToggle'),
   presets: $('presets'),
-  sinceInput: $('sinceInput'),
-  untilInput: $('untilInput'),
-  applyBtn: $('applyBtn'),
+  rangeTrigger: $('rangeTrigger'),
+  rangeTriggerText: $('rangeTriggerText'),
+  rangePop: $('rangePop'),
+  prevMonthBtn: $('prevMonthBtn'),
+  nextMonthBtn: $('nextMonthBtn'),
+  monthTitleL: $('monthTitleL'),
+  monthTitleR: $('monthTitleR'),
+  calL: $('calL'),
+  calR: $('calR'),
+  rangeHint: $('rangeHint'),
   rangeLabel: $('rangeLabel'),
   chart: $('chart'),
   chartEmpty: $('chartEmpty'),
@@ -281,8 +300,7 @@ const PRESET_LABEL = { today: '今天', yesterday: '昨天', last7: '近 7 天',
 function setRange(since, until) {
   state.since = since;
   state.until = until;
-  els.sinceInput.value = since;
-  els.untilInput.value = until;
+  updateRangeTrigger(since, until);
 
   const preset = presetNameOf(since, until);
   for (const btn of els.presets.querySelectorAll('.preset-btn')) {
@@ -295,6 +313,120 @@ function setRange(since, until) {
   els.rangeLabel.textContent = `${prefix} · ${label}`;
 
   load();
+}
+
+/* ---------------- 自定义范围选择器（双月日历，两次点选） ---------------- */
+
+const picker = { leftY: 0, leftM: 0, pickStart: null, hoverDate: null };
+
+const CAL_WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
+
+function updateRangeTrigger(since, until) {
+  els.rangeTriggerText.textContent = inclusiveDays(since, until) === 1 ? since : `${since} → ${until}`;
+}
+
+function openPicker() {
+  const prev = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1);
+  picker.leftY = prev.getFullYear();
+  picker.leftM = prev.getMonth();
+  picker.pickStart = null;
+  picker.hoverDate = null;
+  els.rangeHint.textContent = '点击选择开始日期';
+  els.rangePop.classList.add('open');
+  els.rangeTrigger.setAttribute('aria-expanded', 'true');
+  renderCalendars();
+}
+
+function closePicker() {
+  if (!els.rangePop.classList.contains('open')) return;
+  els.rangePop.classList.remove('open');
+  els.rangeTrigger.setAttribute('aria-expanded', 'false');
+  picker.pickStart = null;
+  picker.hoverDate = null;
+}
+
+/* 展示中的范围：点选开始后为 [start,start] / [start,hover] 预览，否则为已应用范围 */
+function displayRange() {
+  if (picker.pickStart) {
+    if (picker.hoverDate && picker.hoverDate > picker.pickStart) return [picker.pickStart, picker.hoverDate];
+    return [picker.pickStart, picker.pickStart];
+  }
+  return [state.since, state.until];
+}
+
+function calCells(y, m) {
+  const cells = [];
+  const offset = (new Date(y, m, 1).getDay() + 6) % 7; // 周一为第一列
+  for (let i = 0; i < offset; i++) cells.push('');
+  const days = new Date(y, m + 1, 0).getDate();
+  for (let d = 1; d <= days; d++) cells.push(`${y}-${pad2(m + 1)}-${pad2(d)}`);
+  return cells;
+}
+
+function calCellClass(date, a, b) {
+  const cls = ['cal-cell'];
+  if (date === a) cls.push('sel-start');
+  if (date === b) cls.push('sel-end');
+  if (date > a && date < b) cls.push('in-range');
+  if (date === todayStr()) cls.push('today');
+  return cls.join(' ');
+}
+
+function renderCalendars() {
+  const rd = new Date(picker.leftY, picker.leftM + 1, 1);
+  const grids = [
+    { el: els.calL, y: picker.leftY, m: picker.leftM, title: els.monthTitleL },
+    { el: els.calR, y: rd.getFullYear(), m: rd.getMonth(), title: els.monthTitleR },
+  ];
+  grids[0].title.textContent = `${picker.leftY}年${picker.leftM + 1}月`;
+  grids[1].title.textContent = `${rd.getFullYear()}年${rd.getMonth() + 1}月`;
+
+  const [a, b] = displayRange();
+  for (const g of grids) {
+    let html = CAL_WEEKDAYS.map((w) => `<span class="cal-wk">${w}</span>`).join('');
+    for (const cell of calCells(g.y, g.m)) {
+      if (!cell) {
+        html += '<span class="cal-cell cal-blank"></span>';
+        continue;
+      }
+      html += `<button type="button" class="${calCellClass(cell, a, b)}" data-date="${cell}">${Number(cell.slice(8))}</button>`;
+    }
+    g.el.innerHTML = html;
+  }
+}
+
+/* 悬停预览：仅更新类名，不重建 DOM */
+function applyRangePreview() {
+  const [a, b] = displayRange();
+  for (const el of els.rangePop.querySelectorAll('.cal-cell[data-date]')) {
+    const d = el.dataset.date;
+    el.classList.toggle('sel-start', d === a);
+    el.classList.toggle('sel-end', d === b);
+    el.classList.toggle('in-range', d > a && d < b);
+  }
+}
+
+function pickDate(date) {
+  if (!picker.pickStart || date < picker.pickStart) {
+    picker.pickStart = date;
+    picker.hoverDate = null;
+    els.rangeHint.textContent = `已选开始 ${date} · 点击选择结束日期`;
+    renderCalendars();
+    return;
+  }
+  const start = picker.pickStart;
+  picker.pickStart = null;
+  picker.hoverDate = null;
+  closePicker();
+  setRange(start, date);
+}
+
+function shiftPickerMonth(delta) {
+  const d = new Date(picker.leftY, picker.leftM + delta, 1);
+  picker.leftY = d.getFullYear();
+  picker.leftM = d.getMonth();
+  picker.hoverDate = null;
+  renderCalendars();
 }
 
 /* ---------------- 数据加载 ---------------- */
@@ -707,31 +839,54 @@ els.presets.addEventListener('click', (e) => {
   if (range) setRange(range[0], range[1]);
 });
 
-function applyCustomRange() {
-  const since = els.sinceInput.value;
-  const until = els.untilInput.value;
-  if (!since || !until) { showToast('请先选择开始与结束日期'); return; }
-  if (since > until) { showToast('开始日期不能晚于结束日期'); return; }
-  setRange(since, until);
-}
+/* 日期选择器交互 */
+els.rangeTrigger.addEventListener('click', () => {
+  if (els.rangePop.classList.contains('open')) closePicker();
+  else openPicker();
+});
 
-els.applyBtn.addEventListener('click', applyCustomRange);
-els.sinceInput.addEventListener('change', applyCustomRange);
-els.untilInput.addEventListener('change', applyCustomRange);
-els.sinceInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyCustomRange(); });
-els.untilInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyCustomRange(); });
+els.prevMonthBtn.addEventListener('click', () => shiftPickerMonth(-1));
+els.nextMonthBtn.addEventListener('click', () => shiftPickerMonth(1));
+
+els.rangePop.addEventListener('click', (e) => {
+  const cell = e.target.closest('.cal-cell[data-date]');
+  if (cell) pickDate(cell.dataset.date);
+});
+
+els.rangePop.addEventListener('mouseover', (e) => {
+  const cell = e.target.closest('.cal-cell[data-date]');
+  if (!cell || !picker.pickStart) return;
+  if (picker.hoverDate === cell.dataset.date) return;
+  picker.hoverDate = cell.dataset.date;
+  applyRangePreview();
+});
+
+/* 点击弹层与触发按钮以外的区域关闭 */
+document.addEventListener('click', (e) => {
+  if (!els.rangePop.classList.contains('open')) return;
+  if (!e.target.isConnected) return; // 格子点击后 innerHTML 被重建，冒泡到此处时 target 已脱离 DOM
+  if (els.rangePop.contains(e.target) || els.rangeTrigger.contains(e.target)) return;
+  closePicker();
+});
 
 els.refreshBtn.addEventListener('click', () => { load(); loadHeatmap(); });
 
-/* ---------------- 设置面板 ---------------- */
+/* ---------------- 设置弹窗 ---------------- */
 
-function closeSettingsPanel() {
-  els.settingsPanel.classList.remove('open');
+function openSettingsModal() {
+  els.settingsModal.classList.add('open');
+  els.settingsBtn.setAttribute('aria-expanded', 'true');
+  els.settingsClose.focus();
+}
+
+function closeSettingsModal() {
+  els.settingsModal.classList.remove('open');
   els.settingsBtn.setAttribute('aria-expanded', 'false');
 }
 
 function applyTheme() {
-  document.documentElement.dataset.theme = settings.theme;
+  currentTheme = resolvedTheme();
+  document.documentElement.dataset.theme = currentTheme;
   for (const b of els.themeToggle.querySelectorAll('.seg-btn')) {
     b.classList.toggle('active', b.dataset.theme === settings.theme);
   }
@@ -745,20 +900,26 @@ function applyUnit() {
   }
 }
 
-els.settingsBtn.addEventListener('click', (e) => {
-  e.stopPropagation();
-  const open = els.settingsPanel.classList.toggle('open');
-  els.settingsBtn.setAttribute('aria-expanded', String(open));
-});
+els.settingsBtn.addEventListener('click', () => openSettingsModal());
+els.settingsClose.addEventListener('click', closeSettingsModal);
 
-document.addEventListener('click', (e) => {
-  if (!els.settingsPanel.classList.contains('open')) return;
-  if (els.settingsPanel.contains(e.target)) return;
-  closeSettingsPanel();
+/* 点击遮罩空白处关闭（点到弹窗内部则不关） */
+els.settingsModal.addEventListener('click', (e) => {
+  if (e.target === els.settingsModal) closeSettingsModal();
 });
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeSettingsPanel();
+  if (e.key === 'Escape') {
+    closeSettingsModal();
+    closePicker();
+  }
+});
+
+/* theme 为 system 时实时跟随操作系统明暗切换 */
+systemDarkQuery.addEventListener('change', () => {
+  if (settings.theme !== 'system') return;
+  applyTheme();
+  if (state.data) render();
 });
 
 els.themeToggle.addEventListener('click', (e) => {

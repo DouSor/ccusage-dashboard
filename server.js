@@ -4,6 +4,7 @@ const http = require('http');
 const { spawn } = require('child_process');
 const path = require('path');
 const fsp = require('fs/promises');
+const { collectZcodeUsage } = require('./lib/zcode');
 
 const PORT = Number(process.env.PORT) || 3456;
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -93,21 +94,34 @@ async function handleUsageApi(req, res, query) {
 
   try {
     const startedAt = Date.now();
-    let report;
+    let ccReport = null;
     let pricing = 'cached';
+    let ccError = null;
 
     if (forceOnline) {
-      report = await fetchUsage(since, until, { offline: false, timeoutMs: ONLINE_TIMEOUT_MS });
-      pricing = 'online';
+      try {
+        ccReport = await fetchUsage(since, until, { offline: false, timeoutMs: ONLINE_TIMEOUT_MS });
+        pricing = 'online';
+      } catch (err) {
+        ccError = err.message;
+      }
     } else {
       // 先用缓存价格表快速返回；失败再联网拉最新价格
       try {
-        report = await fetchUsage(since, until, { offline: true, timeoutMs: FAST_TIMEOUT_MS });
+        ccReport = await fetchUsage(since, until, { offline: true, timeoutMs: FAST_TIMEOUT_MS });
       } catch {
-        report = await fetchUsage(since, until, { offline: false, timeoutMs: ONLINE_TIMEOUT_MS });
-        pricing = 'online';
+        try {
+          ccReport = await fetchUsage(since, until, { offline: false, timeoutMs: ONLINE_TIMEOUT_MS });
+          pricing = 'online';
+        } catch (err) {
+          ccError = err.message;
+        }
       }
     }
+
+    // ZCode 不被 ccusage 支持，直接解析本地 rollout 记录
+    const zcode = collectZcodeUsage(since, until);
+    const report = mergeReports(ccReport ? stripZcodeRows(ccReport) : null, zcode);
 
     sendJson(res, 200, {
       since,
@@ -115,11 +129,85 @@ async function handleUsageApi(req, res, query) {
       durationMs: Date.now() - startedAt,
       generatedAt: new Date().toISOString(),
       pricing,
+      sources: { ccusage: Boolean(ccReport), zcode: zcode.hasData, ccusageError: ccError },
       report,
     });
   } catch (err) {
     sendJson(res, 500, { error: err.message || '获取用量数据失败' });
   }
+}
+
+/* 防御性剔除 ccusage 数据里的 zcode 行，避免未来 ccusage 支持后双计 */
+function stripZcodeRows(report) {
+  for (const day of report.daily || []) {
+    day.agents = (day.agents || []).filter((a) => a.agent !== 'zcode');
+    if (Array.isArray(day.metadata?.agents)) {
+      day.metadata.agents = day.metadata.agents.filter((a) => a !== 'zcode');
+    }
+  }
+  return report;
+}
+
+/* ccusage 与 ZCode 数据按天合并：数值求和、breakdowns/agents 拼接 */
+function mergeReports(ccReport, zcode) {
+  const TOKEN_KEYS = ['inputTokens', 'outputTokens', 'cacheCreationTokens', 'cacheReadTokens', 'totalTokens'];
+  const byDay = new Map();
+
+  const ensureDay = (period) => {
+    let day = byDay.get(period);
+    if (!day) {
+      day = {
+        period,
+        agent: 'all',
+        inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0,
+        totalTokens: 0, totalCost: 0,
+        modelsUsed: [],
+        modelBreakdowns: [],
+        metadata: { agents: [] },
+        agents: [],
+      };
+      byDay.set(period, day);
+    }
+    return day;
+  };
+
+  const addTokens = (day, src) => {
+    for (const k of TOKEN_KEYS) day[k] += src[k] || 0;
+    day.totalCost += src.totalCost || 0;
+  };
+  const unionInto = (list, values) => {
+    for (const v of values) if (!list.includes(v)) list.push(v);
+  };
+
+  for (const day of ccReport?.daily || []) {
+    const row = ensureDay(day.period);
+    addTokens(row, day);
+    unionInto(row.modelsUsed, day.modelsUsed || []);
+    row.modelBreakdowns.push(...(day.modelBreakdowns || []));
+    unionInto(row.metadata.agents, day.metadata?.agents || []);
+    row.agents.push(...(day.agents || []));
+  }
+
+  for (const day of zcode.daily || []) {
+    const row = ensureDay(day.period);
+    addTokens(row, day);
+    unionInto(row.modelsUsed, day.modelsUsed || []);
+    row.modelBreakdowns.push(...(day.modelBreakdowns || []));
+    unionInto(row.metadata.agents, day.metadata?.agents || []);
+    row.agents.push(...(day.agents || []));
+  }
+
+  const daily = [...byDay.values()].sort((a, b) => a.period.localeCompare(b.period));
+  const totals = daily.reduce((acc, d) => ({
+    inputTokens: acc.inputTokens + d.inputTokens,
+    outputTokens: acc.outputTokens + d.outputTokens,
+    cacheCreationTokens: acc.cacheCreationTokens + d.cacheCreationTokens,
+    cacheReadTokens: acc.cacheReadTokens + d.cacheReadTokens,
+    totalTokens: acc.totalTokens + d.totalTokens,
+    totalCost: acc.totalCost + d.totalCost,
+  }), { inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0, totalCost: 0 });
+
+  return { daily, totals };
 }
 
 async function serveFile(res, filePath, fallbackType) {
