@@ -84,6 +84,11 @@
   <span class="cursor" aria-hidden="true">▌</span>
 </div>
 
+<div class="warn-bar" id="warnBar" hidden>
+  <span class="warn-icon" aria-hidden="true">⚠</span>
+  <span id="warnText"></span>
+</div>
+
 <main id="main">
   <section class="cards" aria-label="用量汇总">
     <article class="card card-primary" style="--tick: var(--teal)">
@@ -120,39 +125,14 @@
 
   <section class="panel chart-panel">
     <div class="panel-head">
-      <h2 id="chartTitle">用量图表</h2>
-      <div class="seg" id="stackToggle" role="group" aria-label="图表模式">
-        <button class="seg-btn active" data-mode="absolute">绝对值</button>
-        <button class="seg-btn" data-mode="percent">占比 %</button>
-      </div>
+      <h2 id="chartTitle">Token 用量趋势</h2>
     </div>
-    <div class="chart-wrap">
+    <div class="chart-wrap" id="chartWrap">
       <div id="chart" aria-label="token 用量图表"></div>
+      <div id="pieChart" class="pie-chart" aria-label="模型用量占比饼图"></div>
       <div class="chart-empty" id="chartEmpty" hidden>
         <span class="chart-empty-tag">NO DATA</span>
         <span>该时间范围内没有用量记录</span>
-      </div>
-    </div>
-  </section>
-
-  <section class="panel heatmap-panel">
-    <div class="panel-head">
-      <h2 id="heatmapTitle">近 180 天热力图</h2>
-      <div class="heatmap-legend" id="heatmapLegend" aria-hidden="true">
-        <span class="legend-text">少</span>
-        <i class="legend-box" data-level="0"></i>
-        <i class="legend-box" data-level="1"></i>
-        <i class="legend-box" data-level="2"></i>
-        <i class="legend-box" data-level="3"></i>
-        <i class="legend-box" data-level="4"></i>
-        <span class="legend-text">多</span>
-      </div>
-    </div>
-    <div class="chart-wrap">
-      <div id="heatmap" aria-label="近 180 天 token 用量热力图"></div>
-      <div class="chart-empty" id="heatmapEmpty" hidden>
-        <span class="chart-empty-tag">NO DATA</span>
-        <span>近 180 天没有用量记录</span>
       </div>
     </div>
   </section>
@@ -179,6 +159,28 @@
         <tbody id="tableBody"></tbody>
         <tfoot id="tableFoot"></tfoot>
       </table>
+    </div>
+  </section>
+
+  <section class="panel heatmap-panel">
+    <div class="panel-head">
+      <h2 id="heatmapTitle">近 180 天热力图</h2>
+      <div class="heatmap-legend" id="heatmapLegend" aria-hidden="true">
+        <span class="legend-text">少</span>
+        <i class="legend-box" data-level="0"></i>
+        <i class="legend-box" data-level="1"></i>
+        <i class="legend-box" data-level="2"></i>
+        <i class="legend-box" data-level="3"></i>
+        <i class="legend-box" data-level="4"></i>
+        <span class="legend-text">多</span>
+      </div>
+    </div>
+    <div class="chart-wrap">
+      <div id="heatmap" aria-label="近 180 天 token 用量热力图"></div>
+      <div class="chart-empty" id="heatmapEmpty" hidden>
+        <span class="chart-empty-tag">NO DATA</span>
+        <span>近 180 天没有用量记录</span>
+      </div>
     </div>
   </section>
 </main>

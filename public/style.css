@@ -479,6 +479,24 @@ body[data-status="loading"] .btn-refresh svg { animation: spin 0.9s linear infin
 
 /* ---------------- 主体 ---------------- */
 
+/* ---------------- 缺价警告条 ---------------- */
+
+.warn-bar {
+  width: min(1280px, calc(100% - 56px));
+  margin: 10px auto 0;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--amber);
+  background: var(--amber-dim);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius);
+}
+.warn-bar[hidden] { display: none; }
+.warn-icon { flex: none; }
+
 main {
   flex: 1;
   width: 100%;
@@ -629,8 +647,21 @@ body[data-status="loading"] main { opacity: 0.6; }
 
 /* ---------------- 图表 ---------------- */
 
-.chart-wrap { position: relative; padding: 10px 12px 14px; }
-#chart { width: 100%; height: 340px; }
+.chart-wrap {
+  position: relative;
+  padding: 10px 12px 14px;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+#chart { width: 100%; height: 340px; min-width: 0; flex: 1; }
+
+/* 右侧模型分布饼图（常显，数据严格跟随日期筛选） */
+.pie-chart {
+  width: 330px;
+  height: 340px;
+  flex: none;
+}
 
 .chart-empty {
   position: absolute;
@@ -799,6 +830,8 @@ tfoot .total-label { letter-spacing: 0.12em; font-size: 11px; color: var(--muted
   .topbar-right .last-updated { display: none; }
   #chart { height: 280px; }
   .presets { flex-wrap: wrap; }
+  .chart-wrap { flex-direction: column; }
+  .pie-chart { width: 100%; height: 260px; }
   .range-calendars { flex-direction: column; gap: 12px; }
   .range-pop { max-width: calc(100vw - 24px); overflow-y: auto; }
 }

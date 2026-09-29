@@ -5,13 +5,6 @@
    数据源：/api/usage?since=YYYY-MM-DD&until=YYYY-MM-DD
    ============================================================ */
 
-const SERIES = [
-  { key: 'inputTokens',          name: 'Input' },
-  { key: 'outputTokens',         name: 'Output' },
-  { key: 'cacheCreationTokens',  name: 'Cache 写' },
-  { key: 'cacheReadTokens',      name: 'Cache 读' },
-];
-
 /* 图表 / agent 配色按主题取值，切换主题后需重渲染 */
 const CHART_THEMES = {
   dark: {
@@ -27,6 +20,7 @@ const CHART_THEMES = {
       opencode: '#61afef',
       hermes: '#c678dd',
       zcode: '#d7ba7d',
+      minimax: '#ff7b72',
       default: '#8a93a3',
     },
     axisLine: '#2a3341',
@@ -47,6 +41,9 @@ const CHART_THEMES = {
     calMonth: '#8a93a3',
     calDay: '#5b6574',
     calBorder: '#12161d',
+    pie: ['#ffb454', '#4ec9b0', '#61afef', '#c678dd', '#98c379', '#56b6c2', '#e06c75', '#8a93a3'],
+    trend: '#ffb454',
+    trendArea: 'rgba(255, 180, 84, 0.18)',
   },
   light: {
     series: {
@@ -61,6 +58,7 @@ const CHART_THEMES = {
       opencode: '#2f639c',
       hermes: '#8a47b8',
       zcode: '#8a6d1a',
+      minimax: '#b03a31',
       default: '#7c7565',
     },
     axisLine: '#cec5ae',
@@ -80,6 +78,9 @@ const CHART_THEMES = {
     calMonth: '#7c7565',
     calDay: '#a89f8c',
     calBorder: '#f6f3ec',
+    pie: ['#b26f14', '#1f7a65', '#2f639c', '#8a47b8', '#55822f', '#257082', '#bb404c', '#7c7565'],
+    trend: '#b26f14',
+    trendArea: 'rgba(178, 111, 20, 0.16)',
   },
 };
 
@@ -125,13 +126,13 @@ function saveSettings() {
 const state = {
   since: null,
   until: null,
-  mode: 'absolute',   // absolute | percent
   data: null,
   heatmap: null,      // 独立于筛选：固定近 30 天
   reqId: 0,
 };
 
 let chart = null;
+let pieChart = null;
 let heatmapChart = null;
 let toastTimer = null;
 
@@ -158,14 +159,17 @@ const els = {
   calL: $('calL'),
   calR: $('calR'),
   rangeHint: $('rangeHint'),
+  warnBar: $('warnBar'),
+  warnText: $('warnText'),
   rangeLabel: $('rangeLabel'),
   chart: $('chart'),
+  chartWrap: $('chartWrap'),
+  pieChart: $('pieChart'),
   chartEmpty: $('chartEmpty'),
   chartTitle: $('chartTitle'),
   heatmap: $('heatmap'),
   heatmapEmpty: $('heatmapEmpty'),
   heatmapTitle: $('heatmapTitle'),
-  stackToggle: $('stackToggle'),
   tableBody: $('tableBody'),
   tableFoot: $('tableFoot'),
   tableSub: $('tableSub'),
@@ -207,7 +211,7 @@ function fmtCompact(n) {
     if (abs >= 1e12) return `${(n / 1e12).toFixed(2)}万亿`;
     if (abs >= 1e8) return `${(n / 1e8).toFixed(2)}亿`;
     if (abs >= 1e4) return `${(n / 1e4).toFixed(1)}万`;
-    return String(n);
+    return String(Math.round(n)); // 动画中间值是浮点，低于阈值时取整显示
   }
 
   const suffix = settings.unit === 'decimal'
@@ -216,7 +220,7 @@ function fmtCompact(n) {
   if (abs >= 1e9) return `${(n / 1e9).toFixed(2)}${suffix.b}`;
   if (abs >= 1e6) return `${(n / 1e6).toFixed(2)}${suffix.m}`;
   if (abs >= 1e3) return `${(n / 1e3).toFixed(1)}${suffix.k}`;
-  return String(n);
+  return String(Math.round(n));
 }
 
 function fmtFull(n) { return Number.isFinite(n) ? n.toLocaleString('en-US') : '—'; }
@@ -447,6 +451,14 @@ async function load() {
     render();
     setStatus('ok');
 
+    const warnings = json.sources?.warnings || [];
+    if (warnings.length) {
+      els.warnText.textContent = `${warnings.join('、')} 缺少价格数据，费用可能偏低 · 重启看板可自动更新 ccusage`;
+      els.warnBar.hidden = false;
+    } else {
+      els.warnBar.hidden = true;
+    }
+
     const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
     els.lastUpdated.textContent = `更新于 ${time} · ${json.durationMs}ms`;
   } catch (err) {
@@ -585,9 +597,10 @@ function render() {
   const report = state.data.report || {};
   const daily = report.daily || [];
   const totals = report.totals || {};
+  const trend = state.data.trend || { daily, totals };
 
   renderCards(totals, daily);
-  renderChart(daily);
+  renderChart(daily, trend.daily);
   renderTable(daily, totals);
 }
 
@@ -629,96 +642,70 @@ function renderCards(totals, daily) {
   cards.cacheRead.title = fmtFull(values.cacheRead);
 }
 
-function renderChart(daily) {
-  const single = daily.length === 1;
-  els.chartTitle.textContent = single
-    ? `模型分布 · ${daily[0].period}`
-    : '按日 Token 用量';
+/* 趋势折线（x 轴按天，单序列 Token 总量）+ 模型分布饼图（严格按筛选范围） */
+function renderChart(daily, trendDaily) {
+  const trend = state.data.trend || {};
+  const trendRows = [...(trendDaily || [])].sort((a, b) => a.period.localeCompare(b.period));
+  const strictRows = [...daily].sort((a, b) => a.period.localeCompare(b.period));
 
-  if (!daily.length) {
+  // 扩窗时（筛选 <3 天）补齐窗口内的空白天为零点，保证铺满 [trend.since, trend.until]；
+  // ≥3 天未扩窗时维持原行为，只画有数据的天
+  let plotRows = trendRows;
+  if (trend.since && trend.since < state.since) {
+    const byDay = new Map(trendRows.map((r) => [r.period, r]));
+    plotRows = [];
+    for (let d = trend.since; d <= trend.until; ) {
+      plotRows.push(byDay.get(d) || { period: d, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0, totalCost: 0 });
+      d = fmtDate(addDays(new Date(`${d}T00:00:00`), 1));
+    }
+  }
+
+  // 面板标题：折线实际展示的范围
+  const rangeLabel = plotRows.length
+    ? (plotRows[0].period === plotRows[plotRows.length - 1].period
+      ? plotRows[0].period
+      : `${plotRows[0].period} → ${plotRows[plotRows.length - 1].period}`)
+    : (trend.since ? `${trend.since} → ${trend.until}` : '');
+  els.chartTitle.textContent = `Token 用量趋势 · ${rangeLabel}`;
+
+  if (!plotRows.length) {
     els.chartEmpty.hidden = false;
     if (chart) chart.clear();
+    if (pieChart) pieChart.clear();
     return;
   }
-  els.chartEmpty.hidden = true;
-
-  const sorted = [...daily].sort((a, b) => a.period.localeCompare(b.period));
-
-  let categories;
-  let rows;
-  let costLookup;
-
-  if (single) {
-    rows = [...(daily[0].modelBreakdowns || [])].sort((a, b) => sumTokens(b) - sumTokens(a));
-    categories = rows.map((r) => r.modelName);
-    costLookup = new Map(rows.map((r) => [r.modelName, r.cost]));
-  } else {
-    rows = sorted;
-    categories = sorted.map((r) => r.period);
-    costLookup = new Map(sorted.map((r) => [r.period, r.totalCost]));
-  }
-
-  const totalLookup = new Map(rows.map((r) => [single ? r.modelName : r.period, sumTokens(r)]));
-
-  const toValue = (row, key) => (state.mode === 'percent'
-    ? (() => { const t = sumTokens(row); return t > 0 ? (row[key] / t) * 100 : 0; })()
-    : row[key] || 0);
+  // trend 范围包含筛选范围，trend 无数据即整体无数据
+  els.chartEmpty.hidden = plotRows.length > 0;
 
   const t = chartTheme();
-
-  const series = SERIES.map((s) => ({
-    name: s.name,
-    type: 'bar',
-    stack: 'tokens',
-    barMaxWidth: 42,
-    itemStyle: { color: t.series[s.key], borderRadius: single ? [0, 0, 0, 0] : [0, 0, 0, 0] },
-    emphasis: { itemStyle: { opacity: 0.85 } },
-    data: rows.map((r) => +toValue(r, s.key).toFixed(2)),
-  }));
+  const categories = plotRows.map((r) => r.period);
+  const costLookup = new Map(plotRows.map((r) => [r.period, r.totalCost]));
 
   const option = {
     backgroundColor: 'transparent',
     textStyle: { fontFamily: MONO_FONT },
     tooltip: {
       trigger: 'axis',
-      axisPointer: { type: 'shadow', shadowStyle: { color: t.shadow } },
+      axisPointer: { type: 'line', lineStyle: { color: t.axisLine } },
       backgroundColor: t.tooltipBg,
       borderColor: t.tooltipBorder,
       borderWidth: 1,
       padding: [10, 14],
       textStyle: { color: t.tooltipText, fontSize: 12, fontFamily: MONO_FONT },
       formatter: (params) => {
-        const name = params[0].axisValue;
-        const head = single ? name : `${name} ${weekdayOf(name)}`;
-        const lines = params
-          .filter((p) => p.value > 0)
-          .map((p) => `${p.marker} ${p.seriesName}  ${state.mode === 'percent' ? `${p.value.toFixed(1)}%` : fmtCompact(p.value)}`);
-        let html = `<div style="margin-bottom:6px;color:${t.headMuted}">${escapeHtml(head)}</div>`;
-        html += lines.length ? lines.join('<br>') : '无数据';
-        if (state.mode === 'absolute') {
-          const total = totalLookup.get(name);
-          const cost = costLookup.get(name);
-          html += `<div style="border-top:1px solid ${t.tooltipBorder};margin-top:8px;padding-top:7px">`
-            + `合计 <b style="color:${t.total}">${fmtCompact(total || 0)}</b>`
-            + `&nbsp;&nbsp;费用 <b style="color:${t.cost}">${fmtCost(cost || 0)}</b></div>`;
-        }
-        return html;
+        const p = params[0];
+        const cost = costLookup.get(p.axisValue) || 0;
+        return `<div style="margin-bottom:6px;color:${t.headMuted}">${escapeHtml(p.axisValue)} ${weekdayOf(p.axisValue)}</div>`
+          + `${p.marker} Token 总量&nbsp;&nbsp;<b style="color:${t.total}">${fmtCompact(p.value)}</b>`
+          + `<div style="border-top:1px solid ${t.tooltipBorder};margin-top:8px;padding-top:7px">`
+          + `费用 <b style="color:${t.cost}">${fmtCost(cost)}</b></div>`;
       },
     },
-    legend: {
-      top: 0,
-      right: 4,
-      icon: 'rect',
-      itemWidth: 10,
-      itemHeight: 10,
-      itemGap: 16,
-      textStyle: { color: t.legendText, fontSize: 11, fontFamily: MONO_FONT },
-      inactiveColor: t.inactive,
-    },
-    grid: { left: 10, right: 14, top: 38, bottom: 6, containLabel: true },
+    grid: { left: 10, right: 20, top: 30, bottom: 6, containLabel: true },
     xAxis: {
       type: 'category',
       data: categories,
+      boundaryGap: false,
       axisLine: { lineStyle: { color: t.axisLine } },
       axisTick: { show: false },
       axisLabel: {
@@ -726,35 +713,149 @@ function renderChart(daily) {
         fontSize: 11,
         fontFamily: MONO_FONT,
         interval: 0,
-        formatter: (v) => (single
-          ? (v.length > 16 ? `${v.slice(0, 15)}…` : v)
-          : `${v.slice(5)}\n${weekdayOf(v)}`),
+        formatter: (v) => `${v.slice(5)}\n${weekdayOf(v)}`,
       },
     },
     yAxis: {
       type: 'value',
-      max: state.mode === 'percent' ? 100 : null,
       axisLabel: {
         color: t.yLabel,
         fontSize: 11,
         fontFamily: MONO_FONT,
-        formatter: (v) => (state.mode === 'percent' ? `${v}%` : fmtCompact(v)),
+        formatter: (v) => fmtCompact(v),
       },
       splitLine: { lineStyle: { color: t.splitLine, type: 'dashed' } },
     },
-    color: SERIES.map((s) => t.series[s.key]),
-    series,
+    series: [{
+      name: 'Token 总量',
+      type: 'line',
+      data: plotRows.map((r) => r.totalTokens || 0),
+      symbol: 'circle',
+      symbolSize: 7,
+      lineStyle: { color: t.trend, width: 2 },
+      itemStyle: { color: t.trend, borderColor: t.calBorder, borderWidth: 1.5 },
+      areaStyle: {
+        color: {
+          type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [
+            { offset: 0, color: t.trendArea },
+            { offset: 1, color: 'transparent' },
+          ],
+        },
+      },
+      emphasis: { focus: 'series' },
+    }],
     animationDuration: 500,
     animationEasing: 'cubicOut',
   };
 
   if (!chart) chart = echarts.init(els.chart);
   chart.setOption(option, { notMerge: true });
+
+  // 饼图：严格按筛选范围聚合各模型
+  renderPie(aggregateModels(strictRows));
+}
+
+/* 跨天合并同名模型的四分量与费用 */
+function aggregateModels(daily) {
+  const byModel = new Map();
+  for (const day of daily) {
+    for (const mb of day.modelBreakdowns || []) {
+      let m = byModel.get(mb.modelName);
+      if (!m) {
+        m = { modelName: mb.modelName, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, cost: 0 };
+        byModel.set(mb.modelName, m);
+      }
+      m.inputTokens += mb.inputTokens || 0;
+      m.outputTokens += mb.outputTokens || 0;
+      m.cacheCreationTokens += mb.cacheCreationTokens || 0;
+      m.cacheReadTokens += mb.cacheReadTokens || 0;
+      m.cost += mb.cost || 0;
+    }
+  }
+  return [...byModel.values()];
 }
 
 function sumTokens(row) {
   return (row.inputTokens || 0) + (row.outputTokens || 0)
     + (row.cacheCreationTokens || 0) + (row.cacheReadTokens || 0);
+}
+
+/* 模型分布饼图（严格按筛选范围，只看用量；百分比一律走 tooltip） */
+function renderPie(modelBreakdowns) {
+  const t = chartTheme();
+  const data = modelBreakdowns
+    .map((mb) => ({ name: mb.modelName, value: sumTokens(mb) }))
+    .filter((d) => d.value > 0)
+    .sort((a, b) => b.value - a.value);
+  const total = data.reduce((s, d) => s + d.value, 0);
+
+  if (!data.length) {
+    if (pieChart) pieChart.clear();
+    return;
+  }
+
+  const option = {
+    backgroundColor: 'transparent',
+    textStyle: { fontFamily: MONO_FONT },
+    color: t.pie,
+    /* 左上角区块标题 + 环形中心总用量 */
+    title: [
+      {
+        text: '模型分布',
+        left: 10,
+        top: 8,
+        textStyle: { color: t.axisLabel, fontSize: 11, fontWeight: 600, fontFamily: MONO_FONT, letterSpacing: 2 },
+      },
+      {
+        text: fmtCompact(total),
+        subtext: '总用量',
+        // 数字与副标题作为一个紧凑整体（itemGap 默认 30 会把块撑高、导致视觉上整块偏下）
+        left: 'center',
+        top: 'center',
+        itemGap: 3,
+        textStyle: { color: t.tooltipText, fontSize: 19, fontWeight: 600, fontFamily: MONO_FONT },
+        subtextStyle: { color: t.yLabel, fontSize: 10.5, fontFamily: MONO_FONT },
+      },
+    ],
+    tooltip: {
+      trigger: 'item',
+      backgroundColor: t.tooltipBg,
+      borderColor: t.tooltipBorder,
+      borderWidth: 1,
+      padding: [10, 14],
+      textStyle: { color: t.tooltipText, fontSize: 12, fontFamily: MONO_FONT },
+      formatter: (p) => `<b style="color:${t.total}">${escapeHtml(p.name)}</b>`
+        + `<br>Token&nbsp;&nbsp;${fmtCompact(p.value)}`
+        + `<br>占比&nbsp;&nbsp;${p.percent.toFixed(1)}%`,
+    },
+    legend: {
+      bottom: 0,
+      left: 'center',
+      icon: 'rect',
+      itemWidth: 10,
+      itemHeight: 10,
+      itemGap: 10,
+      textStyle: { color: t.legendText, fontSize: 10.5, fontFamily: MONO_FONT },
+      inactiveColor: t.inactive,
+    },
+    series: [{
+      type: 'pie',
+      radius: ['32%', '56%'],
+      // 圆心与中心标题同为容器正中（50%），两者构造上重合
+      center: ['50%', '50%'],
+      data,
+      // 外侧百分比与引导线全部去除：模型名看图例，占比走 tooltip
+      label: { show: false },
+      labelLine: { show: false },
+      itemStyle: { borderColor: t.calBorder, borderWidth: 2, borderRadius: 4 },
+      emphasis: { scaleSize: 6 },
+    }],
+    animationDuration: 450,
+  };
+
+  if (!pieChart) pieChart = echarts.init(els.pieChart);
+  pieChart.setOption(option, { notMerge: true });
 }
 
 function renderTable(daily, totals) {
@@ -940,18 +1041,9 @@ els.unitToggle.addEventListener('click', (e) => {
   if (state.data) render();
 });
 
-els.stackToggle.addEventListener('click', (e) => {
-  const btn = e.target.closest('.seg-btn');
-  if (!btn || btn.dataset.mode === state.mode) return;
-  state.mode = btn.dataset.mode;
-  for (const b of els.stackToggle.querySelectorAll('.seg-btn')) {
-    b.classList.toggle('active', b === btn);
-  }
-  if (state.data) renderChart(state.data.report?.daily || []);
-});
-
 window.addEventListener('resize', () => {
   if (chart) chart.resize();
+  if (pieChart) pieChart.resize();
   if (heatmapChart) heatmapChart.resize();
 });
 

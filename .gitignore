@@ -1,2 +1,4 @@
 /.zcode
 node_modules/
+logs/
+.zcodeignore

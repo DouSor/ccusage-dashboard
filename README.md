@@ -4,8 +4,12 @@
 
 支持的数据源：
 
-- **Claude Code / Codex / OpenCode / Hermes**：经由 ccusage 读取各自本机记录
-- **ZCode**：直接解析 `~/.zcode/cli/rollout/model-io-sess_*.jsonl`（每行一次模型调用，按本地时区归天，含子代理会话）；ZCode 的 inputTokens 已含缓存读/写，展示时自动拆分为 净输入 / 缓存写 / 缓存读 四分量
+- **Claude Code / Codex / OpenCode / Hermes**：经由 ccusage 读取各自本机记录。Hermes 桌面端在 Windows 上的数据目录是 `%LOCALAPPDATA%\hermes`（非 ccusage 默认的 `~/.hermes`），看板检测到该目录后会自动以进程级 `HERMES_HOME` 环境变量告知 ccusage，无需手动配置
+- **ZCode**：直接解析 `~/.zcode/cli/rollout/model-io-sess_*.jsonl`（每行一次模型调用，按本地时区归天，含子代理会话）；ZCode 的 inputTokens 已含缓存读/写，展示时自动拆分为 净输入 / 缓存写 / 缓存读 四分量。新版 ccusage 也内置了 zcode 适配器，看板会自动去重、以自解析数据为准（时区口径一致且支持 prices.json 计价）
+- **MiniMax Code**：直接解析 `~/.minimax/v2/sessions/**/messages.jsonl` 的 assistant 行（分列口径与 ccusage 一致，无需换算）；注意 ccusage 输出里的 "Hermes" 是另一个独立产品，与 MiniMax Code 无关
+
+ccusage 的新模型价格来自其内置价格表（随版本更新），因此看板会在每次启动时自动更新 ccusage；若仍有模型缺价，页面顶部会出现警告条（费用偏低），ZCode 模型的价格可通过下方 `prices.json` 补充。
+
 - **ZCode 成本估算（可选）**：在项目根目录创建 `prices.json`（单位：USD / 百万 token）：
   ```json
   { "GLM-5.3-Flash": { "input": 0.1, "output": 0.4, "cacheRead": 0.02, "cacheWrite": 0.2 } }
@@ -19,9 +23,7 @@
 - **自定义日期范围**：双月日历弹层（上月 + 本月，可翻页），第一次点击选开始日期、第二次点击选结束日期并自动确认
 - **手动刷新**：点「刷新」重新读取最新本地记录
 - **汇总卡片**：总 Token、费用估算（USD）、Input / Output / Cache 写入 / Cache 读取
-- **趋势图表**（ECharts）：
-  - 多日范围 → 按日堆叠柱状图，可切换「绝对值 / 占比 %」，tooltip 含当日费用
-  - 单日 → 按模型分布柱状图
+- **趋势折线 + 模型分布饼图**：折线图按天展示 Token 总量（筛选不足 3 天时自动扩为以最晚一天结尾的 3 天）；右侧饼图严格按筛选范围聚合各模型用量占比（悬停看明细，中心为范围总量）
 - **设置**（顶栏「设置」按钮弹出对话框，选择保存在浏览器本地）：
   - 外观：白天 / 夜间（默认）/ 跟随系统（实时跟随操作系统明暗偏好）
   - Token 单位：M/B（默认，如 15.91M）/ 百万·十亿（15.91百万）/ 万·亿（1590.5万）
@@ -32,8 +34,9 @@
 
 **方式一（推荐）：双击项目根目录的 `启动看板.vbs`**
 
+- 每次启动服务前自动把 ccusage 更新到最新版（新模型的内置价格表随新版本更新），更新日志在 `logs/ccusage-update.log`；更新失败（如断网）不影响启动
 - 自动在后台启动服务（无控制台窗口），等服务就绪后用默认浏览器打开看板
-- 如果服务已在运行则不会重复启动，直接打开页面
+- 如果服务已在运行则不会重复启动、也不重复更新，直接打开页面
 - 双击 `停止看板.vbs` 可停止后台服务（只停本项目，不影响其他 node 程序）
 
 **方式二：命令行**
