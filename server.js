@@ -6,7 +6,6 @@ const path = require('path');
 const fsp = require('fs/promises');
 const fs = require('fs');
 const os = require('os');
-const { collectZcodeUsage } = require('./lib/zcode');
 const { collectMinimaxUsage } = require('./lib/minimax');
 
 const PORT = Number(process.env.PORT) || 3456;
@@ -152,12 +151,12 @@ async function handleUsageApi(req, res, query) {
       }
     }
 
-    // ZCode 与 MiniMax Code 不被 ccusage 支持，直接解析各自本地记录
-    const zcode = collectZcodeUsage(fetchSince, until);
+    // MiniMax Code 不被 ccusage 支持，直接解析各自本地记录。
+    // ZCode 已由 ccusage 原生支持（读 ~/.zcode/cli/db/db.sqlite），不再自解析。
     const minimax = collectMinimaxUsage(fetchSince, until);
     const merged = mergeReports(
       ccReport ? stripCustomAgentRows(ccReport) : null,
-      [zcode, minimax],
+      [minimax],
     );
 
     // 切分：trend = 扩展范围全部天；report = 严格筛选范围（重算 totals）
@@ -174,7 +173,6 @@ async function handleUsageApi(req, res, query) {
       pricing,
       sources: {
         ccusage: Boolean(ccReport),
-        zcode: zcode.hasData,
         minimax: minimax.hasData,
         ccusageError: ccError,
         warnings: ccWarnings,
@@ -201,8 +199,9 @@ function sumDays(daily) {
 
 /* 防御性剔除 ccusage 数据里由本项目自解析的 agent 行，避免 ccusage 原生支持后双计。
    ccusage 的 day 级总量与顶层 modelBreakdowns 含被剔除 agent 的份额，
-   因此全部从保留的 agents 行重建，不再信任其 day 级数字。 */
-const CUSTOM_AGENTS = ['zcode', 'minimax'];
+   因此全部从保留的 agents 行重建，不再信任其 day 级数字。
+   注意：zcode 已改由 ccusage 原生提供（其自解析已停用），不在此列。 */
+const CUSTOM_AGENTS = ['minimax'];
 
 const DAY_TOKEN_KEYS = ['inputTokens', 'outputTokens', 'cacheCreationTokens', 'cacheReadTokens', 'totalTokens', 'totalCost'];
 
@@ -245,7 +244,7 @@ function stripCustomAgentRows(report) {
   return report;
 }
 
-/* ccusage 与自解析数据（zcode/minimax）按天合并：数值求和、breakdowns/agents 拼接 */
+/* ccusage 与自解析数据（minimax）按天合并：数值求和、breakdowns/agents 拼接 */
 function mergeReports(ccReport, customReports) {
   const TOKEN_KEYS = ['inputTokens', 'outputTokens', 'cacheCreationTokens', 'cacheReadTokens', 'totalTokens'];
   const byDay = new Map();

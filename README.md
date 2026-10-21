@@ -1,18 +1,19 @@
 # CCUsage Dashboard · Token 用量看板
 
-本地运行的 coding agent token 用量看板，基于 [ccusage](https://github.com/ryoppippi/ccusage) 解析 Claude Code / Codex 等 agent 在本机留下的会话记录（JSONL），并内置 ZCode 会话记录解析，纯本地计算，数据不出机器。
+本地运行的 coding agent token 用量看板，基于 [ccusage](https://github.com/ryoppippi/ccusage) 解析 Claude Code / Codex / ZCode 等 agent 在本机留下的会话记录，并内置 MiniMax Code 会话记录解析，纯本地计算，数据不出机器。
 
 支持的数据源：
 
-- **Claude Code / Codex / OpenCode / Hermes**：经由 ccusage 读取各自本机记录。Hermes 桌面端在 Windows 上的数据目录是 `%LOCALAPPDATA%\hermes`（非 ccusage 默认的 `~/.hermes`），看板检测到该目录后会自动以进程级 `HERMES_HOME` 环境变量告知 ccusage，无需手动配置
-- **ZCode**：直接解析 `~/.zcode/cli/rollout/model-io-sess_*.jsonl`（每行一次模型调用，按本地时区归天，含子代理会话）；ZCode 的 inputTokens 已含缓存读/写，展示时自动拆分为 净输入 / 缓存写 / 缓存读 四分量。新版 ccusage 也内置了 zcode 适配器，看板会自动去重、以自解析数据为准（时区口径一致且支持 prices.json 计价）
-- **MiniMax Code**：直接解析 `~/.minimax/v2/sessions/**/messages.jsonl` 的 assistant 行（分列口径与 ccusage 一致，无需换算）；注意 ccusage 输出里的 "Hermes" 是另一个独立产品，与 MiniMax Code 无关
+- **Claude Code / Codex / ZCode / OpenCode / Hermes**：经由 ccusage 读取各自本机记录。两点说明：
+  - Hermes 桌面端在 Windows 上的数据目录是 `%LOCALAPPDATA%\hermes`（非 ccusage 默认的 `~/.hermes`），看板检测到该目录后会自动以进程级 `HERMES_HOME` 环境变量告知 ccusage，无需手动配置
+  - ZCode 由 ccusage 原生适配器读取其 SQLite 数据库（`~/.zcode/cli/db/db.sqlite`），数据完整（含子代理会话）
+- **MiniMax Code**：看板直接解析 `~/.minimax/v2/sessions/**/messages.jsonl` 的 assistant 行（分列口径，无需换算）；注意 ccusage 输出里的 "Hermes" 是另一个独立产品，与 MiniMax Code 无关
 
-ccusage 的新模型价格来自其内置价格表（随版本更新），因此看板会在每次启动时自动更新 ccusage；若仍有模型缺价，页面顶部会出现警告条（费用偏低），ZCode 模型的价格可通过下方 `prices.json` 补充。
+ccusage 的新模型价格来自其内置价格表（随版本更新），因此看板会在每次启动时自动更新 ccusage；若仍有模型缺价，页面顶部会出现警告条（费用偏低）。
 
-- **ZCode 成本估算（可选）**：在项目根目录创建 `prices.json`（单位：USD / 百万 token）：
+- **MiniMax 模型成本估算（可选）**：在项目根目录创建 `prices.json`（单位：USD / 百万 token）：
   ```json
-  { "GLM-5.3-Flash": { "input": 0.1, "output": 0.4, "cacheRead": 0.02, "cacheWrite": 0.2 } }
+  { "MiniMax-M3.1-Flash-Preview": { "input": 0.1, "output": 0.4, "cacheRead": 0.02, "cacheWrite": 0.2 } }
   ```
   未配置的模型成本计为 0。
 

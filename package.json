@@ -11,7 +11,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "ccusage": "^20.0.26",
+    "ccusage": "^20.0.37",
     "echarts": "^6.1.0"
   }
 }
